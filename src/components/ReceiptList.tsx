@@ -31,9 +31,9 @@ const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect }) => {
     });
   };
 
-  const formatCurrency = (amount?: number) => {
-    if (amount === undefined || amount === null) return '--';
-    return `CAD ${amount.toFixed(2)}`;
+  const formatCurrency = (amount?: number | null) => {
+    if (amount === undefined || amount === null || isNaN(Number(amount))) return '--';
+    return `CAD ${Number(amount).toFixed(2)}`;
   };
 
   if (receipts.length === 0) {
