@@ -21,9 +21,19 @@ export const setAuthToken = (token: string | null) => {
 // Receipt endpoints
 export const receiptApi = {
   getAll: async (status?: string) => {
-    const params = status ? { status } : {};
-    const response = await api.get('/api/receipts', { params });
-    return response.data;
+    try {
+      const params = status ? { status } : {};
+      const response = await api.get('/api/receipts', { params });
+      // Ensure we always return an array
+      if (!Array.isArray(response.data)) {
+        console.error('API returned non-array data for getAll:', response.data);
+        return [];
+      }
+      return response.data;
+    } catch (error) {
+      console.error('receiptApi.getAll error:', error);
+      return []; // Return empty array on error
+    }
   },
 
   getById: async (id: string) => {

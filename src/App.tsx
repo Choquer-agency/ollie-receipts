@@ -32,10 +32,17 @@ const App: React.FC = () => {
         if (token) {
           setAuthToken(token);
           const data = await receiptApi.getAll();
-          setReceipts(data);
+          // Ensure we always have an array
+          if (Array.isArray(data)) {
+            setReceipts(data);
+          } else {
+            console.warn('API returned non-array data:', data);
+            setReceipts([]);
+          }
         }
       } catch (error) {
         console.error('Failed to load receipts:', error);
+        setReceipts([]); // Set empty array on error
       } finally {
         setLoading(false);
       }

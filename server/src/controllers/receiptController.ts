@@ -33,6 +33,8 @@ export const getReceipts = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { status } = req.query;
     
+    console.log('getReceipts called for user:', req.userId);
+    
     let receipts;
     if (status) {
       receipts = await sql`
@@ -48,10 +50,13 @@ export const getReceipts = async (req: AuthenticatedRequest, res: Response) => {
       `;
     }
 
-    res.json(receipts);
+    console.log('Found', receipts.length, 'receipts');
+    
+    // Always return an array
+    res.json(Array.isArray(receipts) ? receipts : []);
   } catch (error) {
     console.error('Get receipts error:', error);
-    res.status(500).json({ error: 'Failed to fetch receipts' });
+    res.status(500).json({ error: 'Failed to fetch receipts', details: error instanceof Error ? error.message : 'Unknown error' });
   }
 };
 
@@ -77,6 +82,9 @@ export const getReceiptById = async (req: AuthenticatedRequest, res: Response) =
 
 export const createReceipt = async (req: AuthenticatedRequest, res: Response) => {
   try {
+    console.log('createReceipt called for user:', req.userId);
+    console.log('createReceipt body:', req.body);
+    
     const data = createReceiptSchema.parse(req.body);
 
     const receipt = await sql`
@@ -99,13 +107,15 @@ export const createReceipt = async (req: AuthenticatedRequest, res: Response) =>
       RETURNING *
     `;
 
+    console.log('Receipt created:', receipt[0].id);
     res.status(201).json(receipt[0]);
   } catch (error) {
     if (error instanceof z.ZodError) {
+      console.error('Validation error:', error.errors);
       return res.status(400).json({ error: 'Invalid request data', details: error.errors });
     }
     console.error('Create receipt error:', error);
-    res.status(500).json({ error: 'Failed to create receipt' });
+    res.status(500).json({ error: 'Failed to create receipt', details: error instanceof Error ? error.message : 'Unknown error' });
   }
 };
 
@@ -114,92 +124,41 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
     const { id } = req.params;
     const data = updateReceiptSchema.parse(req.body);
 
-    // Build dynamic update query
-    const updates: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
+    // Get current receipt first to merge with updates
+    const currentReceipts = await sql`
+      SELECT * FROM receipts 
+      WHERE id = ${id} AND user_id = ${req.userId}
+    `;
 
-    if (data.status !== undefined) {
-      updates.push(`status = $${paramIndex++}`);
-      values.push(data.status);
-    }
-    if (data.vendorName !== undefined) {
-      updates.push(`vendor_name = $${paramIndex++}`);
-      values.push(data.vendorName);
-    }
-    if (data.transactionDate !== undefined) {
-      updates.push(`transaction_date = $${paramIndex++}`);
-      values.push(data.transactionDate);
-    }
-    if (data.subtotal !== undefined) {
-      updates.push(`subtotal = $${paramIndex++}`);
-      values.push(data.subtotal);
-    }
-    if (data.tax !== undefined) {
-      updates.push(`tax = $${paramIndex++}`);
-      values.push(data.tax);
-    }
-    if (data.total !== undefined) {
-      updates.push(`total = $${paramIndex++}`);
-      values.push(data.total);
-    }
-    if (data.currency !== undefined) {
-      updates.push(`currency = $${paramIndex++}`);
-      values.push(data.currency);
-    }
-    if (data.suggestedCategory !== undefined) {
-      updates.push(`suggested_category = $${paramIndex++}`);
-      values.push(data.suggestedCategory);
-    }
-    if (data.description !== undefined) {
-      updates.push(`description = $${paramIndex++}`);
-      values.push(data.description);
-    }
-    if (data.documentType !== undefined) {
-      updates.push(`document_type = $${paramIndex++}`);
-      values.push(data.documentType);
-    }
-    if (data.taxTreatment !== undefined) {
-      updates.push(`tax_treatment = $${paramIndex++}`);
-      values.push(data.taxTreatment);
-    }
-    if (data.taxRate !== undefined) {
-      updates.push(`tax_rate = $${paramIndex++}`);
-      values.push(data.taxRate);
-    }
-    if (data.publishTarget !== undefined) {
-      updates.push(`publish_target = $${paramIndex++}`);
-      values.push(data.publishTarget);
-    }
-    if (data.isPaid !== undefined) {
-      updates.push(`is_paid = $${paramIndex++}`);
-      values.push(data.isPaid);
-    }
-    if (data.paymentAccountId !== undefined) {
-      updates.push(`payment_account_id = $${paramIndex++}`);
-      values.push(data.paymentAccountId);
-    }
-    if (data.qbAccountId !== undefined) {
-      updates.push(`qb_account_id = $${paramIndex++}`);
-      values.push(data.qbAccountId);
+    if (currentReceipts.length === 0) {
+      return res.status(404).json({ error: 'Receipt not found' });
     }
 
-    if (updates.length === 0) {
-      return res.status(400).json({ error: 'No fields to update' });
-    }
+    const current = currentReceipts[0];
 
-    values.push(id, req.userId);
-
+    // Update with merged values
     const receipt = await sql`
       UPDATE receipts
-      SET ${sql.unsafe(updates.join(', '))}
+      SET 
+        status = ${data.status !== undefined ? data.status : current.status},
+        vendor_name = ${data.vendorName !== undefined ? data.vendorName : current.vendor_name},
+        transaction_date = ${data.transactionDate !== undefined ? data.transactionDate : current.transaction_date},
+        subtotal = ${data.subtotal !== undefined ? data.subtotal : current.subtotal},
+        tax = ${data.tax !== undefined ? data.tax : current.tax},
+        total = ${data.total !== undefined ? data.total : current.total},
+        currency = ${data.currency !== undefined ? data.currency : current.currency},
+        suggested_category = ${data.suggestedCategory !== undefined ? data.suggestedCategory : current.suggested_category},
+        description = ${data.description !== undefined ? data.description : current.description},
+        document_type = ${data.documentType !== undefined ? data.documentType : current.document_type},
+        tax_treatment = ${data.taxTreatment !== undefined ? data.taxTreatment : current.tax_treatment},
+        tax_rate = ${data.taxRate !== undefined ? data.taxRate : current.tax_rate},
+        publish_target = ${data.publishTarget !== undefined ? data.publishTarget : current.publish_target},
+        is_paid = ${data.isPaid !== undefined ? data.isPaid : current.is_paid},
+        payment_account_id = ${data.paymentAccountId !== undefined ? data.paymentAccountId : current.payment_account_id},
+        qb_account_id = ${data.qbAccountId !== undefined ? data.qbAccountId : current.qb_account_id}
       WHERE id = ${id} AND user_id = ${req.userId}
       RETURNING *
     `;
-
-    if (receipt.length === 0) {
-      return res.status(404).json({ error: 'Receipt not found' });
-    }
 
     res.json(receipt[0]);
   } catch (error) {
@@ -207,7 +166,7 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
       return res.status(400).json({ error: 'Invalid request data', details: error.errors });
     }
     console.error('Update receipt error:', error);
-    res.status(500).json({ error: 'Failed to update receipt' });
+    res.status(500).json({ error: 'Failed to update receipt', details: error instanceof Error ? error.message : 'Unknown error' });
   }
 };
 
