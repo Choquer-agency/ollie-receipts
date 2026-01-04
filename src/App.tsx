@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { SignedIn, SignedOut, SignInButton, UserButton, useAuth } from '@clerk/clerk-react';
+import { useAuth } from '@clerk/clerk-react';
 import { Receipt, ReceiptStatus } from './types';
 import { connectToQuickBooks } from './services/qboService';
 import ReceiptList from './components/ReceiptList';
 import ReceiptUpload from './components/ReceiptUpload';
 import ReceiptReview from './components/ReceiptReview';
+import AuthModal from './components/AuthModal';
+import UserMenu from './components/UserMenu';
 import { LayoutGrid, CheckCircle2 } from 'lucide-react';
 import { receiptApi, setAuthToken } from './services/apiService';
 
@@ -16,6 +18,7 @@ const App: React.FC = () => {
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [isQboConnected, setIsQboConnected] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   useEffect(() => {
     const loadReceipts = async () => {
@@ -198,67 +201,73 @@ const App: React.FC = () => {
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-               <SignedOut>
-                 <SignInButton mode="modal">
-                   <button 
-                     style={{
-                       fontSize: 'var(--font-size-body)',
-                       fontWeight: 'var(--font-weight-semibold)',
-                       color: 'white',
-                       backgroundColor: 'var(--primary)',
-                       padding: '8px 16px',
-                       borderRadius: 'var(--radius-md)',
-                       border: 'none',
-                       cursor: 'pointer',
-                       transition: 'var(--transition-default)',
-                     }}
-                   >
-                     Sign in
-                   </button>
-                 </SignInButton>
-               </SignedOut>
-               <SignedIn>
-                 {!isQboConnected ? (
-                   <button 
-                    onClick={handleConnectQBO}
-                    style={{
-                      fontSize: 'var(--font-size-body)',
-                      fontWeight: 'var(--font-weight-semibold)',
-                      color: 'var(--primary)',
-                      backgroundColor: 'var(--background-muted)',
-                      padding: '6px 12px',
-                      borderRadius: 'var(--radius-md)',
-                      border: 'none',
-                      cursor: 'pointer',
-                      transition: 'var(--transition-default)',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.opacity = '0.8';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.opacity = '1';
-                    }}
-                   >
-                     Connect QuickBooks
-                   </button>
-                 ) : (
-                   <span style={{
-                     display: 'flex',
-                     alignItems: 'center',
-                     gap: '6px',
-                     fontSize: 'var(--font-size-small)',
+               {!isSignedIn ? (
+                 <button 
+                   onClick={() => setShowAuthModal(true)}
+                   style={{
+                     fontSize: 'var(--font-size-body)',
                      fontWeight: 'var(--font-weight-semibold)',
-                     color: 'var(--status-success-text)',
-                     backgroundColor: 'var(--status-success-bg)',
-                     padding: '4px 10px',
+                     color: 'white',
+                     backgroundColor: 'var(--primary)',
+                     padding: '8px 16px',
                      borderRadius: 'var(--radius-md)',
-                     border: '1px solid var(--status-success-text)',
-                   }}>
-                      <CheckCircle2 size={12} /> QBO Connected
-                   </span>
-                 )}
-                 <UserButton afterSignOutUrl="/" />
-               </SignedIn>
+                     border: 'none',
+                     cursor: 'pointer',
+                     transition: 'var(--transition-default)',
+                   }}
+                   onMouseEnter={(e) => {
+                     e.currentTarget.style.backgroundColor = 'var(--primary-hover)';
+                   }}
+                   onMouseLeave={(e) => {
+                     e.currentTarget.style.backgroundColor = 'var(--primary)';
+                   }}
+                 >
+                   Sign in
+                 </button>
+               ) : (
+                 <>
+                   {!isQboConnected ? (
+                     <button 
+                      onClick={handleConnectQBO}
+                      style={{
+                        fontSize: 'var(--font-size-body)',
+                        fontWeight: 'var(--font-weight-semibold)',
+                        color: 'var(--primary)',
+                        backgroundColor: 'var(--background-muted)',
+                        padding: '6px 12px',
+                        borderRadius: 'var(--radius-md)',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'var(--transition-default)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.opacity = '0.8';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                      }}
+                     >
+                       Connect QuickBooks
+                     </button>
+                   ) : (
+                     <span style={{
+                       display: 'flex',
+                       alignItems: 'center',
+                       gap: '6px',
+                       fontSize: 'var(--font-size-small)',
+                       fontWeight: 'var(--font-weight-semibold)',
+                       color: 'var(--status-success-text)',
+                       backgroundColor: 'var(--status-success-bg)',
+                       padding: '4px 10px',
+                       borderRadius: 'var(--radius-md)',
+                       border: '1px solid var(--status-success-text)',
+                     }}>
+                        <CheckCircle2 size={12} /> QBO Connected
+                     </span>
+                   )}
+                   <UserMenu />
+                 </>
+               )}
             </div>
           </div>
         </div>
@@ -270,7 +279,7 @@ const App: React.FC = () => {
         margin: '0 auto',
         padding: '24px 16px',
       }}>
-        <SignedOut>
+        {!isSignedIn ? (
           <div style={{
             textAlign: 'center',
             padding: '48px 16px',
@@ -278,6 +287,7 @@ const App: React.FC = () => {
             <h2 style={{
               fontSize: 'var(--font-size-h2)',
               fontWeight: 'var(--font-weight-bold)',
+              fontFamily: 'var(--font-heading)',
               color: 'var(--text-primary)',
               marginBottom: '16px',
             }}>
@@ -290,32 +300,34 @@ const App: React.FC = () => {
             }}>
               Please sign in to manage your receipts
             </p>
-            <SignInButton mode="modal">
-              <button 
-                style={{
-                  fontSize: 'var(--font-size-body)',
-                  fontWeight: 'var(--font-weight-semibold)',
-                  color: 'white',
-                  backgroundColor: 'var(--primary)',
-                  padding: '12px 24px',
-                  borderRadius: 'var(--radius-md)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  transition: 'var(--transition-default)',
-                }}
-              >
-                Sign in to get started
-              </button>
-            </SignInButton>
+            <button 
+              onClick={() => setShowAuthModal(true)}
+              style={{
+                fontSize: 'var(--font-size-body)',
+                fontWeight: 'var(--font-weight-semibold)',
+                color: 'white',
+                backgroundColor: 'var(--primary)',
+                padding: '12px 24px',
+                borderRadius: 'var(--radius-md)',
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'var(--transition-default)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--primary-hover)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--primary)';
+              }}
+            >
+              Sign in to get started
+            </button>
           </div>
-        </SignedOut>
-        
-        <SignedIn>
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '48px' }}>
-              <p style={{ color: 'var(--text-secondary)' }}>Loading...</p>
-            </div>
-          ) : view === 'list' ? (
+        ) : loading ? (
+          <div style={{ textAlign: 'center', padding: '48px' }}>
+            <p style={{ color: 'var(--text-secondary)' }}>Loading...</p>
+          </div>
+        ) : view === 'list' ? (
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -378,8 +390,13 @@ const App: React.FC = () => {
             />
           )
         )}
-        </SignedIn>
       </main>
+
+      {/* Auth Modal */}
+      <AuthModal 
+        isOpen={showAuthModal} 
+        onClose={() => setShowAuthModal(false)}
+      />
     </div>
   );
 };

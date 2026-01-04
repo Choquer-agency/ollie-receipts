@@ -1,0 +1,234 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useUser, useClerk } from '@clerk/clerk-react';
+import { User, LogOut, ChevronDown } from 'lucide-react';
+
+const UserMenu: React.FC = () => {
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  if (!user) return null;
+
+  const getInitials = () => {
+    const firstName = user.firstName || '';
+    const lastName = user.lastName || '';
+    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || user.primaryEmailAddress?.emailAddress.charAt(0).toUpperCase() || 'U';
+  };
+
+  const getDisplayName = () => {
+    if (user.firstName && user.lastName) {
+      return `${user.firstName} ${user.lastName}`;
+    }
+    if (user.firstName) {
+      return user.firstName;
+    }
+    return user.primaryEmailAddress?.emailAddress || 'User';
+  };
+
+  return (
+    <div ref={menuRef} style={{ position: 'relative' }}>
+      {/* Trigger Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '6px 12px 6px 6px',
+          backgroundColor: 'var(--background-muted)',
+          border: '1px solid var(--border-strong)',
+          borderRadius: 'var(--radius-md)',
+          cursor: 'pointer',
+          transition: 'var(--transition-default)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = 'var(--border-strong)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = 'var(--background-muted)';
+        }}
+      >
+        {/* Avatar */}
+        {user.imageUrl ? (
+          <img
+            src={user.imageUrl}
+            alt={getDisplayName()}
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              objectFit: 'cover',
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              backgroundColor: 'var(--primary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              fontSize: 'var(--font-size-small)',
+              fontWeight: 'var(--font-weight-semibold)',
+            }}
+          >
+            {getInitials()}
+          </div>
+        )}
+
+        {/* User Name */}
+        <span
+          style={{
+            fontSize: 'var(--font-size-body)',
+            fontWeight: 'var(--font-weight-medium)',
+            color: 'var(--text-primary)',
+            maxWidth: '150px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {getDisplayName()}
+        </span>
+
+        {/* Chevron */}
+        <ChevronDown
+          size={16}
+          style={{
+            color: 'var(--text-secondary)',
+            transition: 'var(--transition-default)',
+            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+          }}
+        />
+      </button>
+
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 8px)',
+            right: 0,
+            backgroundColor: 'var(--background-elevated)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-xl)',
+            boxShadow: 'var(--shadow-raised)',
+            minWidth: '220px',
+            overflow: 'hidden',
+            zIndex: 'var(--z-dropdown)',
+          }}
+        >
+          {/* User Info */}
+          <div
+            style={{
+              padding: '12px 16px',
+              borderBottom: '1px solid var(--border-default)',
+            }}
+          >
+            <p
+              style={{
+                fontSize: 'var(--font-size-body)',
+                fontWeight: 'var(--font-weight-semibold)',
+                color: 'var(--text-primary)',
+                marginBottom: '2px',
+              }}
+            >
+              {getDisplayName()}
+            </p>
+            <p
+              style={{
+                fontSize: 'var(--font-size-small)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              {user.primaryEmailAddress?.emailAddress}
+            </p>
+          </div>
+
+          {/* Menu Items */}
+          <div style={{ padding: '8px' }}>
+            {/* Account Settings (Future) */}
+            <button
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '10px 12px',
+                backgroundColor: 'transparent',
+                border: 'none',
+                borderRadius: 'var(--radius-md)',
+                cursor: 'pointer',
+                transition: 'var(--transition-default)',
+                fontSize: 'var(--font-size-body)',
+                color: 'var(--text-primary)',
+                textAlign: 'left',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--background-muted)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <User size={16} style={{ color: 'var(--text-secondary)' }} />
+              <span>Account settings</span>
+            </button>
+
+            {/* Sign Out */}
+            <button
+              onClick={() => signOut()}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '10px 12px',
+                backgroundColor: 'transparent',
+                border: 'none',
+                borderRadius: 'var(--radius-md)',
+                cursor: 'pointer',
+                transition: 'var(--transition-default)',
+                fontSize: 'var(--font-size-body)',
+                color: 'var(--status-error-text)',
+                textAlign: 'left',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--status-error-bg)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <LogOut size={16} />
+              <span>Sign out</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default UserMenu;
+
