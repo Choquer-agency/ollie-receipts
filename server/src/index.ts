@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { clerkMiddleware } from '@clerk/express';
 import receiptRoutes from './routes/receipts.js';
 
 dotenv.config();
@@ -21,6 +22,9 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Add Clerk middleware to handle authentication
+app.use(clerkMiddleware());
 
 // Health check
 app.get('/health', (req, res) => {

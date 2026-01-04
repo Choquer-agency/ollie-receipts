@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { clerkClient } from '@clerk/express';
+import { clerkClient, getAuth } from '@clerk/express';
 import { sql } from '../db/index.js';
 
 export interface AuthenticatedRequest extends Request {
@@ -13,42 +13,32 @@ export const requireAuth = async (
   next: NextFunction
 ) => {
   try {
-    const authHeader = req.headers.authorization;
+    // Use Clerk's getAuth to extract authenticated user info from the request
+    const auth = getAuth(req);
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.log('No authorization token provided');
-      return res.status(401).json({ error: 'No authorization token provided' });
+    if (!auth || !auth.userId) {
+      console.log('No authenticated user found');
+      return res.status(401).json({ error: 'Unauthorized - No valid session' });
     }
 
-    const token = authHeader.substring(7);
-    
-    // Verify the token with Clerk - using the sessions API
+    const clerkUserId = auth.userId;
+    req.clerkUserId = clerkUserId;
+    console.log('Clerk user authenticated:', clerkUserId);
+
+    // Get user info from Clerk to get email
     try {
-      // @ts-ignore - clerkClient types may not be perfect
-      const session = await clerkClient.sessions.verifySession(token);
-      
-      if (!session || !session.userId) {
-        console.log('Invalid session');
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-
-      req.clerkUserId = session.userId;
-      console.log('Clerk user authenticated:', session.userId);
-
-      // Get user info from Clerk to get email
-      // @ts-ignore
-      const clerkUser = await clerkClient.users.getUser(session.userId);
-      const email = clerkUser.emailAddresses?.[0]?.emailAddress || session.userId;
+      const clerkUser = await clerkClient.users.getUser(clerkUserId);
+      const email = clerkUser.emailAddresses?.[0]?.emailAddress || clerkUserId;
 
       // Get or create user in our database
-      const user = await getOrCreateUser(session.userId, email);
+      const user = await getOrCreateUser(clerkUserId, email);
       req.userId = user.id;
       console.log('Database user ID:', user.id);
 
       next();
-    } catch (verifyError) {
-      console.error('Token verification error:', verifyError);
-      return res.status(401).json({ error: 'Invalid or expired token' });
+    } catch (userError) {
+      console.error('Error fetching user from Clerk:', userError);
+      return res.status(401).json({ error: 'Failed to authenticate user' });
     }
   } catch (error) {
     console.error('Auth error:', error);
