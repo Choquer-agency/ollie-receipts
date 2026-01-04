@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:frontend": "tsc && vite build",
+    "build:backend": "cd server && npm install && npm run build",
+    "start": "cd server && npm start",
     "preview": "vite preview"
   },
   "dependencies": {
