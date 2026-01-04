@@ -1,0 +1,239 @@
+/**
+ * Ollie Invoice Design System - CSS Tokens
+ * 
+ * Import this file into your React app to access all design tokens.
+ * Usage: import './design-system/tokens.css' in your main App.tsx
+ * 
+ * All values are defined as CSS custom properties (variables) that can be
+ * used throughout your application with var(--token-name).
+ */
+
+:root {
+  /* ==================== BRAND COLORS ==================== */
+  --primary: #2CA01C;
+  --primary-hover: #238a16;
+  --heading-accent-light: #263926;
+  --heading-accent-dark: #a8d5a2;
+  
+  /* ==================== BACKGROUND COLORS ==================== */
+  /* Light Mode */
+  --background: #FAF9F5;
+  --background-elevated: #FFFFFF;
+  --background-muted: #F0EEE6;
+  
+  /* Dark Mode (define in [data-theme="dark"] or .dark class) */
+  /* --background: hsl(0 0% 10%); */
+  /* --background-elevated: hsl(0 0% 14%); */
+  /* --background-muted: hsl(0 0% 18%); */
+  
+  /* ==================== TEXT COLORS ==================== */
+  /* Light Mode */
+  --text-primary: #484848;
+  --text-secondary: #6B6B6B;
+  --text-tertiary: #8C8C8C;
+  
+  /* ==================== BORDER COLORS ==================== */
+  --border-default: #F6F5F1;
+  --border-strong: #E8E6E0;
+  
+  /* ==================== STATUS COLORS ==================== */
+  /* Success / Paid */
+  --status-success-bg: #E8F5E9;
+  --status-success-text: #1B5E20;
+  
+  /* Warning / Pending */
+  --status-warning-bg: #FFF8E1;
+  --status-warning-text: #F57F17;
+  
+  /* Error / Overdue */
+  --status-error-bg: #FFEBEE;
+  --status-error-text: #B71C1C;
+  
+  /* Info / Sent */
+  --status-info-bg: #E3F2FD;
+  --status-info-text: #0D47A1;
+  
+  /* Draft / Neutral */
+  --status-draft-bg: #F5F5F5;
+  --status-draft-text: #424242;
+  
+  /* Processing */
+  --status-processing-bg: #F3E5F5;
+  --status-processing-text: #4A148C;
+  
+  /* Approved */
+  --status-approved-bg: #E0F2F1;
+  --status-approved-text: #004D40;
+  
+  /* Cancelled */
+  --status-cancelled-bg: #FFF3E0;
+  --status-cancelled-text: #E65100;
+  
+  /* ==================== TYPOGRAPHY ==================== */
+  /* Font Families */
+  --font-heading: 'p22-mackinac-pro', serif;
+  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  /* Font Sizes - Marketing */
+  --font-size-hero-h1-mobile: 2.25rem;    /* 36px */
+  --font-size-hero-h1-desktop: 3.5rem;    /* 56px */
+  --font-size-h2-mobile: 1.75rem;         /* 28px */
+  --font-size-h2-desktop: 2.5rem;         /* 40px */
+  --font-size-h3-mobile: 1.5rem;          /* 24px */
+  --font-size-h3-desktop: 2rem;           /* 32px */
+  --font-size-large-body-mobile: 1.125rem; /* 18px */
+  --font-size-large-body-desktop: 1.25rem; /* 20px */
+  --font-size-body-mobile: 1rem;          /* 16px */
+  --font-size-body-desktop: 1.125rem;     /* 18px */
+  
+  /* Font Sizes - Application UI */
+  --font-size-h1: 2rem;        /* 32px */
+  --font-size-h2: 1.25rem;     /* 20px */
+  --font-size-h3: 1.125rem;    /* 18px */
+  --font-size-h4: 1rem;        /* 16px */
+  --font-size-body: 0.875rem;  /* 14px */
+  --font-size-small: 0.75rem;  /* 12px */
+  --font-size-tiny: 0.625rem;  /* 10px */
+  
+  /* Font Weights */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  /* Line Heights */
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.6;
+  
+  /* Letter Spacing */
+  --letter-spacing-tight: -0.02em;
+  --letter-spacing-normal: 0em;
+  --letter-spacing-wide: 0.01em;
+  
+  /* ==================== SPACING ==================== */
+  /* Base spacing unit: 4px (0.25rem) */
+  --spacing-1: 0.25rem;   /* 4px */
+  --spacing-2: 0.5rem;    /* 8px */
+  --spacing-3: 0.75rem;   /* 12px */
+  --spacing-4: 1rem;      /* 16px */
+  --spacing-5: 1.25rem;   /* 20px */
+  --spacing-6: 1.5rem;    /* 24px */
+  --spacing-8: 2rem;      /* 32px */
+  --spacing-10: 2.5rem;   /* 40px */
+  --spacing-12: 3rem;     /* 48px */
+  --spacing-16: 4rem;     /* 64px */
+  
+  /* Card Padding */
+  --card-padding-mobile: var(--spacing-4);    /* 16px (p-4) */
+  --card-padding-desktop: var(--spacing-6);   /* 24px (p-6) */
+  
+  /* Page Padding - Application UI */
+  --page-padding-mobile: var(--spacing-4);    /* 16px (px-4) */
+  --page-padding-tablet: var(--spacing-6);    /* 24px (px-6) */
+  --page-padding-desktop: var(--spacing-8);   /* 32px (px-8) */
+  
+  /* Page Padding - Marketing */
+  --page-padding-marketing: var(--spacing-6); /* 24px consistent */
+  
+  /* Button Padding */
+  --button-padding-sm: 0.375rem 0.75rem;      /* 6px 12px */
+  --button-padding-md: 0.5rem 1rem;           /* 8px 16px */
+  
+  /* ==================== BORDER RADIUS ==================== */
+  --radius-md: 6px;    /* Buttons, inputs, badges, tabs */
+  --radius-xl: 12px;   /* Cards, panels, containers */
+  
+  /* ==================== SHADOWS / ELEVATION ==================== */
+  --shadow-none: none;
+  --shadow-raised: 0 2px 8px rgba(0, 0, 0, 0.06);      /* Level 2 - Cards, dropdowns */
+  --shadow-overlay: 0 16px 48px rgba(0, 0, 0, 0.12);   /* Level 4 - Modals */
+  
+  /* ==================== Z-INDEX SCALE ==================== */
+  --z-base: 0;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-fixed: 30;
+  --z-backdrop: 40;
+  --z-modal: 50;
+  --z-popover: 60;
+  --z-toast: 70;
+  --z-tooltip: 80;
+  --z-debug: 90;
+  
+  /* ==================== TRANSITIONS ==================== */
+  --transition-fast: 0.1s ease;
+  --transition-default: 0.2s ease;
+  --transition-medium: 0.3s ease;
+  --transition-slow: 0.5s ease;
+  
+  /* ==================== BREAKPOINTS ==================== */
+  /* Note: Use these in @media queries */
+  /* --breakpoint-sm: 640px; */
+  /* --breakpoint-md: 768px; */
+  /* --breakpoint-lg: 1024px; */
+  /* --breakpoint-xl: 1280px; */
+}
+
+/* ==================== UTILITY CLASSES ==================== */
+
+/* Typography Utilities */
+.h1 {
+  font-family: var(--font-heading);
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-tight);
+}
+
+.h2 {
+  font-family: var(--font-heading);
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-normal);
+}
+
+.h3 {
+  font-family: var(--font-heading);
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-normal);
+}
+
+.h4 {
+  font-family: var(--font-heading);
+  font-size: var(--font-size-h4);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-normal);
+}
+
+.body {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-normal);
+}
+
+.small {
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-normal);
+}
+
+/* Elevation Utilities */
+.elevation-flat {
+  box-shadow: var(--shadow-none);
+}
+
+.elevation-raised {
+  box-shadow: var(--shadow-raised);
+}
+
+.elevation-overlay {
+  box-shadow: var(--shadow-overlay);
+}
+
+
+
+
+

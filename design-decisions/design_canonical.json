@@ -1,0 +1,964 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "2.0.0",
+  "description": "Canonical Ollie Invoice Design System - Single Source of Truth",
+  "last_updated": "2025-12-16",
+  "status": "proposed",
+  
+  "typography": {
+    "font_families": {
+      "heading": {
+        "family": "p22-mackinac-pro",
+        "fallback": "serif",
+        "weight_range": [500, 700],
+        "css_variable": "--font-heading"
+      },
+      "body": {
+        "family": "Inter",
+        "fallback": "system-ui, -apple-system, sans-serif",
+        "weight_range": [400, 700],
+        "css_variable": "--font-sans"
+      },
+      "monospace": {
+        "family": "JetBrains Mono",
+        "fallback": "monospace",
+        "weight_range": [400, 500],
+        "css_variable": "--font-mono"
+      }
+    },
+    
+    "scales": {
+      "marketing": {
+        "description": "Landing page, pricing, public pages",
+        "levels": {
+          "hero_h1": {
+            "size_mobile": "36px",
+            "size_desktop": "56px",
+            "size_mobile_rem": "2.25rem",
+            "size_desktop_rem": "3.5rem",
+            "weight": 600,
+            "line_height": 1.1,
+            "letter_spacing": "-0.02em",
+            "font_family": "heading"
+          },
+          "section_h2": {
+            "size_mobile": "28px",
+            "size_desktop": "40px",
+            "size_mobile_rem": "1.75rem",
+            "size_desktop_rem": "2.5rem",
+            "weight": 600,
+            "line_height": 1.2,
+            "letter_spacing": "-0.015em",
+            "font_family": "heading"
+          },
+          "subsection_h3": {
+            "size_mobile": "24px",
+            "size_desktop": "32px",
+            "size_mobile_rem": "1.5rem",
+            "size_desktop_rem": "2rem",
+            "weight": 600,
+            "line_height": 1.3,
+            "letter_spacing": "-0.01em",
+            "font_family": "heading"
+          },
+          "large_body": {
+            "size_mobile": "18px",
+            "size_desktop": "20px",
+            "size_mobile_rem": "1.125rem",
+            "size_desktop_rem": "1.25rem",
+            "weight": 400,
+            "line_height": 1.6,
+            "letter_spacing": "0",
+            "font_family": "body"
+          },
+          "body": {
+            "size_mobile": "16px",
+            "size_desktop": "18px",
+            "size_mobile_rem": "1rem",
+            "size_desktop_rem": "1.125rem",
+            "weight": 400,
+            "line_height": 1.6,
+            "letter_spacing": "0",
+            "font_family": "body"
+          },
+          "small": {
+            "size": "14px",
+            "size_rem": "0.875rem",
+            "weight": 400,
+            "line_height": 1.5,
+            "letter_spacing": "0",
+            "font_family": "body"
+          }
+        }
+      },
+      
+      "application": {
+        "description": "Dashboard, invoices, settings, authenticated app",
+        "levels": {
+          "page_title": {
+            "size": "32px",
+            "size_rem": "2rem",
+            "weight": 700,
+            "line_height": 1.2,
+            "letter_spacing": "-0.015em",
+            "font_family": "heading",
+            "semantic_name": "h1"
+          },
+          "section_heading": {
+            "size": "20px",
+            "size_rem": "1.25rem",
+            "weight": 600,
+            "line_height": 1.3,
+            "letter_spacing": "-0.01em",
+            "font_family": "heading",
+            "semantic_name": "h2"
+          },
+          "card_title": {
+            "size": "18px",
+            "size_rem": "1.125rem",
+            "weight": 600,
+            "line_height": 1.4,
+            "letter_spacing": "-0.005em",
+            "font_family": "heading",
+            "semantic_name": "h3"
+          },
+          "subheading": {
+            "size": "16px",
+            "size_rem": "1rem",
+            "weight": 600,
+            "line_height": 1.4,
+            "letter_spacing": "0",
+            "font_family": "heading",
+            "semantic_name": "h4"
+          },
+          "body": {
+            "size": "14px",
+            "size_rem": "0.875rem",
+            "weight": 400,
+            "line_height": 1.5,
+            "letter_spacing": "0",
+            "font_family": "body"
+          },
+          "small": {
+            "size": "12px",
+            "size_rem": "0.75rem",
+            "weight": 400,
+            "line_height": 1.4,
+            "letter_spacing": "0",
+            "font_family": "body"
+          },
+          "tiny": {
+            "size": "10px",
+            "size_rem": "0.625rem",
+            "weight": 500,
+            "line_height": 1.3,
+            "letter_spacing": "0.01em",
+            "font_family": "body"
+          }
+        }
+      }
+    },
+    
+    "font_weights": {
+      "regular": 400,
+      "medium": 500,
+      "semibold": 600,
+      "bold": 700
+    },
+    
+    "letter_spacing_rules": {
+      "headings_large": "-0.015em to -0.02em (32px+)",
+      "headings_small": "-0.005em to -0.01em (<32px)",
+      "body": "0em",
+      "uppercase_labels": "0.025em",
+      "tiny_text": "0.01em (10px)"
+    }
+  },
+  
+  "colors": {
+    "brand": {
+      "primary": {
+        "hex": "#2CA01C",
+        "hsl": "113 70% 37%",
+        "css_variable": "--primary",
+        "description": "Primary green - buttons, CTAs, paid status, links"
+      },
+      "heading_accent_light": {
+        "hex": "#263926",
+        "css_variable": "--heading-accent",
+        "description": "Dark green for H1/H2 on marketing pages (light mode only)"
+      },
+      "heading_accent_dark": {
+        "hex": "#a8d5a2",
+        "css_variable": "--heading-accent",
+        "description": "Light green for H1/H2 on marketing pages (dark mode only)"
+      }
+    },
+    
+    "semantic": {
+      "background": {
+        "light": {
+          "default": {
+            "hsl": "48 29% 97%",
+            "hex": "#FAF9F5",
+            "css_variable": "--background",
+            "description": "Main warm off-white background"
+          },
+          "elevated": {
+            "hsl": "0 0% 100%",
+            "hex": "#FFFFFF",
+            "css_variable": "--background-elevated",
+            "description": "Cards, dialogs, elevated surfaces"
+          },
+          "muted": {
+            "hsl": "48 24% 92%",
+            "hex": "#F0EEE6",
+            "css_variable": "--background-muted",
+            "description": "Muted regions, disabled states"
+          }
+        },
+        "dark": {
+          "default": {
+            "hsl": "0 0% 10%",
+            "css_variable": "--background"
+          },
+          "elevated": {
+            "hsl": "0 0% 14%",
+            "css_variable": "--background-elevated"
+          },
+          "muted": {
+            "hsl": "0 0% 18%",
+            "css_variable": "--background-muted"
+          }
+        }
+      },
+      
+      "text": {
+        "light": {
+          "primary": {
+            "hsl": "0 0% 28%",
+            "hex": "#484848",
+            "css_variable": "--text-primary"
+          },
+          "secondary": {
+            "hsl": "0 0% 42%",
+            "css_variable": "--text-secondary"
+          },
+          "tertiary": {
+            "hsl": "0 0% 55%",
+            "css_variable": "--text-tertiary"
+          },
+          "disabled": {
+            "hsl": "0 0% 70%",
+            "css_variable": "--text-disabled"
+          }
+        },
+        "dark": {
+          "primary": {
+            "hsl": "0 0% 90%",
+            "css_variable": "--text-primary"
+          },
+          "secondary": {
+            "hsl": "0 0% 70%",
+            "css_variable": "--text-secondary"
+          },
+          "tertiary": {
+            "hsl": "0 0% 55%",
+            "css_variable": "--text-tertiary"
+          },
+          "disabled": {
+            "hsl": "0 0% 40%",
+            "css_variable": "--text-disabled"
+          }
+        }
+      },
+      
+      "border": {
+        "light": {
+          "default": {
+            "hsl": "48 23% 95%",
+            "hex": "#F6F5F1",
+            "css_variable": "--border-default"
+          },
+          "strong": {
+            "hsl": "48 23% 90%",
+            "css_variable": "--border-strong"
+          },
+          "subtle": {
+            "hsl": "48 23% 97%",
+            "css_variable": "--border-subtle"
+          }
+        },
+        "dark": {
+          "default": {
+            "hsl": "0 0% 20%",
+            "css_variable": "--border-default"
+          },
+          "strong": {
+            "hsl": "0 0% 25%",
+            "css_variable": "--border-strong"
+          },
+          "subtle": {
+            "hsl": "0 0% 15%",
+            "css_variable": "--border-subtle"
+          }
+        }
+      }
+    },
+    
+    "status": {
+      "success": {
+        "background": {
+          "hsl": "113 70% 95%",
+          "css_variable": "--status-success-bg"
+        },
+        "text": {
+          "hsl": "113 70% 25%",
+          "css_variable": "--status-success-text"
+        },
+        "border": {
+          "hsl": "113 70% 80%",
+          "css_variable": "--status-success-border"
+        },
+        "indicator": "Use --primary (#2CA01C)",
+        "use_cases": ["paid invoices", "success messages", "completed actions"]
+      },
+      "warning": {
+        "background": {
+          "hsl": "38 90% 95%",
+          "css_variable": "--status-warning-bg"
+        },
+        "text": {
+          "hsl": "38 90% 30%",
+          "css_variable": "--status-warning-text"
+        },
+        "border": {
+          "hsl": "38 90% 75%",
+          "css_variable": "--status-warning-border"
+        },
+        "use_cases": ["pending actions", "warnings", "attention needed"]
+      },
+      "error": {
+        "background": {
+          "hsl": "0 84% 97%",
+          "css_variable": "--status-error-bg"
+        },
+        "text": {
+          "hsl": "0 84% 45%",
+          "css_variable": "--status-error-text"
+        },
+        "border": {
+          "hsl": "0 84% 85%",
+          "css_variable": "--status-error-border"
+        },
+        "use_cases": ["overdue invoices", "errors", "destructive actions"]
+      },
+      "info": {
+        "background": {
+          "hsl": "210 100% 97%",
+          "css_variable": "--status-info-bg"
+        },
+        "text": {
+          "hsl": "210 100% 40%",
+          "css_variable": "--status-info-text"
+        },
+        "border": {
+          "hsl": "210 100% 85%",
+          "css_variable": "--status-info-border"
+        },
+        "use_cases": ["sent invoices", "information", "neutral actions"]
+      },
+      "neutral": {
+        "background": "Use --background-muted",
+        "text": "Use --text-secondary",
+        "border": "Use --border-default",
+        "use_cases": ["draft invoices", "default states"]
+      }
+    },
+    
+    "chart": [
+      {
+        "name": "chart-1",
+        "hsl": "220 70% 50%",
+        "color": "blue",
+        "css_variable": "--chart-1"
+      },
+      {
+        "name": "chart-2",
+        "hsl": "160 60% 45%",
+        "color": "teal",
+        "css_variable": "--chart-2"
+      },
+      {
+        "name": "chart-3",
+        "hsl": "30 80% 55%",
+        "color": "orange",
+        "css_variable": "--chart-3"
+      },
+      {
+        "name": "chart-4",
+        "hsl": "280 65% 60%",
+        "color": "purple",
+        "css_variable": "--chart-4"
+      },
+      {
+        "name": "chart-5",
+        "hsl": "340 75% 55%",
+        "color": "pink",
+        "css_variable": "--chart-5"
+      }
+    ],
+    
+    "overlays": {
+      "dialog": {
+        "value": "rgba(0, 0, 0, 0.80)",
+        "css_variable": "--overlay-dialog"
+      },
+      "hover_light": {
+        "value": "rgba(0, 0, 0, 0.03)",
+        "css_variable": "--overlay-hover-light"
+      },
+      "hover_dark": {
+        "value": "rgba(255, 255, 255, 0.04)",
+        "css_variable": "--overlay-hover-dark"
+      },
+      "active_light": {
+        "value": "rgba(0, 0, 0, 0.08)",
+        "css_variable": "--overlay-active-light"
+      },
+      "active_dark": {
+        "value": "rgba(255, 255, 255, 0.09)",
+        "css_variable": "--overlay-active-dark"
+      }
+    },
+    
+    "enforcement": {
+      "forbidden": [
+        "text-slate-*",
+        "bg-slate-*",
+        "text-gray-*",
+        "bg-gray-*",
+        "text-green-*",
+        "bg-green-*",
+        "text-red-*",
+        "bg-red-*",
+        "text-blue-*",
+        "bg-blue-*",
+        "Any direct Tailwind color except for marketing decorative gradients"
+      ],
+      "required": "All components must use CSS variables or design tokens only"
+    }
+  },
+  
+  "spacing": {
+    "base_unit": "0.25rem (4px)",
+    
+    "page_layout": {
+      "application": {
+        "horizontal": {
+          "mobile": "16px (px-4)",
+          "tablet": "24px (px-6)",
+          "desktop": "32px (px-8)",
+          "max_width": "1280px (max-w-7xl)"
+        },
+        "vertical": {
+          "mobile": "24px (py-6)",
+          "desktop": "32px (py-8)"
+        },
+        "section_stack": {
+          "mobile": "24px (space-y-6)",
+          "desktop": "32px (space-y-8)"
+        }
+      },
+      "marketing": {
+        "horizontal": {
+          "all_breakpoints": "24px (px-6)",
+          "max_width": "1152px (max-w-6xl)"
+        },
+        "vertical": {
+          "small": "64px (py-16)",
+          "standard": "80px mobile, 112px desktop (py-20 md:py-28)",
+          "large": "96px mobile, 128px desktop (py-24 md:py-32)"
+        }
+      }
+    },
+    
+    "card_padding": {
+      "application": {
+        "mobile": "16px (p-4)",
+        "desktop": "24px (p-6)",
+        "compact": "12px (p-3)",
+        "spacious": "32px (p-8)"
+      },
+      "card_sections": {
+        "header": "24px (p-6)",
+        "header_internal_gap": "6px (space-y-1.5)",
+        "content": "24px horizontal, 0 top (p-6 pt-0)",
+        "footer": "24px horizontal, 0 top (p-6 pt-0)"
+      },
+      "marketing": {
+        "mobile": "24px (p-6)",
+        "desktop": "32px (p-8)"
+      }
+    },
+    
+    "component_internal": {
+      "buttons": {
+        "small": {
+          "horizontal": "12px (px-3)",
+          "vertical": "6px (py-1.5)"
+        },
+        "default": {
+          "horizontal": "16px (px-4)",
+          "vertical": "8px (py-2)"
+        },
+        "large": {
+          "horizontal": "32px (px-8)",
+          "vertical": "12px (py-3)"
+        }
+      },
+      "form_fields": {
+        "input": {
+          "horizontal": "12px (px-3)",
+          "vertical": "8px (py-2)"
+        },
+        "textarea": "12px all sides (p-3)",
+        "label_below": "8px (mb-2)",
+        "helper_above": "4px (mt-1)",
+        "field_gap": "16px (space-y-4)"
+      },
+      "badges": {
+        "horizontal": "10px (px-2.5)",
+        "vertical": "2px (py-0.5)"
+      },
+      "tabs": {
+        "list_internal": "4px (p-1)",
+        "trigger": {
+          "horizontal": "12px (px-3)",
+          "vertical": "8px (py-2)"
+        }
+      }
+    },
+    
+    "stack_spacing": {
+      "tight": "8px (space-y-2)",
+      "standard": "16px (space-y-4)",
+      "comfortable": "24px mobile (space-y-6), 32px desktop (space-y-8)",
+      "spacious": "48px (space-y-12)"
+    },
+    
+    "gap_spacing": {
+      "tight": "8px (gap-2)",
+      "standard": "16px (gap-4)",
+      "comfortable": "24px (gap-6)"
+    },
+    
+    "container_max_widths": {
+      "xs": "384px (max-w-sm)",
+      "sm": "512px (max-w-lg)",
+      "md": "768px (max-w-3xl)",
+      "lg": "1152px (max-w-6xl)",
+      "xl": "1280px (max-w-7xl)"
+    }
+  },
+  
+  "border_radius": {
+    "values": {
+      "sm": {
+        "px": 3,
+        "rem": "0.1875rem",
+        "use": "Tabs, tight UI elements"
+      },
+      "md": {
+        "px": 6,
+        "rem": "0.375rem",
+        "use": "Buttons, inputs, badges (STANDARD)"
+      },
+      "xl": {
+        "px": 12,
+        "rem": "0.75rem",
+        "use": "Cards, panels (STANDARD)"
+      },
+      "2xl": {
+        "px": 16,
+        "rem": "1rem",
+        "use": "Marketing cards, large panels"
+      },
+      "full": {
+        "value": "9999px",
+        "use": "Pills, avatars, circular buttons"
+      }
+    },
+    "removed": {
+      "lg": "9px (0.5625rem) - REMOVED, do not use"
+    },
+    "usage_rules": {
+      "app_buttons": "rounded-md (6px)",
+      "app_cards": "rounded-xl (12px)",
+      "marketing_ctas": "rounded-full (pill)",
+      "marketing_cards": "rounded-2xl (16px)",
+      "avatars": "rounded-full"
+    }
+  },
+  
+  "elevation": {
+    "levels": [
+      {
+        "level": 0,
+        "name": "flat",
+        "border": "1px solid border-default",
+        "shadow": "none",
+        "background": "bg-background or bg-background-elevated",
+        "use": "Table rows, list items, sections"
+      },
+      {
+        "level": 1,
+        "name": "resting",
+        "border": "1px solid border-default",
+        "shadow": "0 1px 3px rgba(0, 0, 0, 0.04)",
+        "background": "bg-background-elevated",
+        "css_class": "elevation-1",
+        "use": "Cards, panels, form sections"
+      },
+      {
+        "level": 2,
+        "name": "raised",
+        "border": "1px solid border-default",
+        "shadow": "0 2px 8px rgba(0, 0, 0, 0.06)",
+        "background": "bg-background-elevated",
+        "css_class": "elevation-2",
+        "use": "Dropdown menus, popovers, tooltips"
+      },
+      {
+        "level": 3,
+        "name": "floating",
+        "border": "1px solid border-default",
+        "shadow": "0 8px 24px rgba(0, 0, 0, 0.08)",
+        "background": "bg-background-elevated",
+        "css_class": "elevation-3",
+        "use": "Modals, dialogs, sheets"
+      },
+      {
+        "level": 4,
+        "name": "overlay",
+        "border": "none",
+        "shadow": "0 16px 48px rgba(0, 0, 0, 0.12)",
+        "background": "bg-background-elevated",
+        "backdrop": "bg-overlay-dialog",
+        "css_class": "elevation-4",
+        "use": "Full-screen modals, critical alerts"
+      }
+    ],
+    
+    "interaction_states": {
+      "hover": {
+        "overlay": "var(--overlay-hover)",
+        "transition": "0.2s ease",
+        "z_index": 999,
+        "description": "Pseudo-element covers entire element including border"
+      },
+      "active": {
+        "overlay": "var(--overlay-active)",
+        "transform": "scale(0.97) for buttons",
+        "transition": "0.1s ease"
+      },
+      "toggle": {
+        "overlay": "var(--overlay-active)",
+        "z_index": -1,
+        "description": "Sits behind content, not above"
+      }
+    },
+    
+    "css_classes": {
+      "structural": [
+        "elevation-0",
+        "elevation-1",
+        "elevation-2",
+        "elevation-3",
+        "elevation-4"
+      ],
+      "interactive": [
+        "hover-elevate",
+        "active-elevate",
+        "toggle-elevate",
+        "hover-elevate-strong"
+      ]
+    },
+    
+    "rules": {
+      "borders_only": "Table rows, list items, inline elements",
+      "borders_plus_shadows": "Cards, panels, dropdowns, dialogs",
+      "overlays": "ALL interactive states (hover, active, toggle)",
+      "never": "Shadow without border (except full-page overlays)"
+    }
+  },
+  
+  "components": {
+    "button": {
+      "variants": [
+        {
+          "name": "primary",
+          "background": "bg-primary",
+          "text": "text-white",
+          "border": "none",
+          "hover": "overlay darken",
+          "active": "scale(0.97) + stronger overlay",
+          "use": "Primary actions (Create, Send, Submit, Save)"
+        },
+        {
+          "name": "secondary",
+          "background": "bg-background-muted",
+          "text": "text-primary",
+          "border": "1px solid border-default",
+          "hover": "overlay effect",
+          "use": "Secondary actions (Cancel, Close, Back)"
+        },
+        {
+          "name": "outline",
+          "background": "transparent",
+          "text": "inherits parent",
+          "border": "1px solid rgba(current, 0.10)",
+          "hover": "overlay effect",
+          "use": "Tertiary actions (dropdowns, tabs alternative)"
+        },
+        {
+          "name": "ghost",
+          "background": "transparent",
+          "text": "text-secondary",
+          "border": "none",
+          "hover": "bg-background-muted",
+          "use": "Icon buttons, subtle actions, menu items"
+        },
+        {
+          "name": "destructive",
+          "background": "bg-status-error-text",
+          "text": "text-white",
+          "border": "none",
+          "hover": "overlay darken",
+          "use": "Delete, remove, irreversible actions"
+        }
+      ],
+      
+      "sizes": [
+        {
+          "name": "sm",
+          "height": "32px",
+          "padding_horizontal": "12px",
+          "font_size": "12px",
+          "icon_size": "14px",
+          "use": "Table actions, compact UI"
+        },
+        {
+          "name": "md",
+          "height": "40px",
+          "padding_horizontal": "16px",
+          "font_size": "14px",
+          "icon_size": "16px",
+          "use": "Standard UI buttons (DEFAULT)"
+        },
+        {
+          "name": "lg",
+          "height": "48px",
+          "padding_horizontal": "24px",
+          "font_size": "16px",
+          "icon_size": "20px",
+          "use": "Marketing CTAs, forms"
+        },
+        {
+          "name": "xl",
+          "height": "56px",
+          "padding_horizontal": "32px",
+          "font_size": "18px",
+          "icon_size": "24px",
+          "use": "Hero CTAs only"
+        }
+      ],
+      
+      "border_radius": {
+        "application": "6px (rounded-md)",
+        "marketing": "9999px (rounded-full)"
+      },
+      
+      "interactions": {
+        "hover": {
+          "cursor": "pointer",
+          "overlay": "var(--overlay-hover)",
+          "transition": "0.2s ease",
+          "icon_rotation": "90deg, 0.3s cubic-bezier(0.25, 0.1, 0.3, 1.4)"
+        },
+        "active": {
+          "transform": "scale(0.97)",
+          "overlay": "var(--overlay-active)",
+          "transition": "0.1s ease"
+        },
+        "release_animation": {
+          "name": "bounce-back",
+          "duration": "0.22s",
+          "timing": "cubic-bezier(.28, .03, .2, 1.4)",
+          "keyframes": "0% scale(0.97) → 55% scale(1.02) → 100% scale(1)"
+        },
+        "focus": {
+          "ring": "2px solid var(--primary)",
+          "offset": "2px",
+          "outline": "none"
+        },
+        "disabled": {
+          "opacity": 0.5,
+          "cursor": "not-allowed",
+          "pointer_events": "none"
+        }
+      },
+      
+      "special_case": {
+        "create_invoice_button": {
+          "decision": "Consolidate into Primary variant, size md",
+          "enhancements": [
+            "animate-bounce-release class (optional)",
+            "icon-rotate-on-hover class (optional)"
+          ],
+          "migration": "Remove separate CSS file, use design tokens"
+        }
+      }
+    }
+  },
+  
+  "z_index": {
+    "scale": {
+      "base": 0,
+      "dropdown": 10,
+      "sticky": 20,
+      "fixed": 30,
+      "backdrop": 40,
+      "modal": 50,
+      "popover": 60,
+      "toast": 70,
+      "tooltip": 80,
+      "debug": 90
+    },
+    
+    "usage_map": {
+      "table_rows_cards": 0,
+      "dropdown_menus": 10,
+      "select_dropdowns": 10,
+      "sticky_headers": 20,
+      "floating_action_buttons": 20,
+      "fixed_sidebar": 30,
+      "fixed_navigation": 30,
+      "modal_backdrop": 40,
+      "drawer_backdrop": 40,
+      "modal_content": 50,
+      "dialog_content": 50,
+      "popovers": 60,
+      "toast_notifications": 70,
+      "tooltips": 80,
+      "command_palette": 90
+    },
+    
+    "special_cases": {
+      "interaction_overlays": {
+        "hover_active": 999,
+        "toggle": -1,
+        "note": "Scoped within component, never interact with global scale"
+      },
+      "background_elements": {
+        "behind_content": -1,
+        "far_background": -10
+      }
+    },
+    
+    "css_variables": {
+      "z_base": 0,
+      "z_dropdown": 10,
+      "z_sticky": 20,
+      "z_fixed": 30,
+      "z_backdrop": 40,
+      "z_modal": 50,
+      "z_popover": 60,
+      "z_toast": 70,
+      "z_tooltip": 80,
+      "z_debug": 90
+    }
+  },
+  
+  "motion": {
+    "durations": {
+      "fast": "100ms",
+      "default": "200ms",
+      "medium": "300ms",
+      "slow": "500ms",
+      "slower": "600ms"
+    },
+    
+    "timing_functions": {
+      "ease": "standard transitions",
+      "ease_out": "things appearing (modals, dropdowns)",
+      "ease_in": "things disappearing",
+      "bounce": "cubic-bezier(.28,.03,.2,1.4)",
+      "smooth": "cubic-bezier(0.25, 0.1, 0.3, 1.4)"
+    },
+    
+    "usage": {
+      "button_press": "100ms ease",
+      "hover_states": "200ms ease",
+      "color_changes": "200ms ease",
+      "icon_rotations": "300ms smooth",
+      "subtle_movements": "300ms ease",
+      "fade_ins": "500ms ease-out",
+      "modal_appearances": "500ms ease-out",
+      "shine_effects": "600ms ease-out"
+    }
+  },
+  
+  "accessibility": {
+    "minimum_tap_target": "44px (iOS Human Interface Guidelines)",
+    "mobile_font_size": "16px (text-base) for inputs to prevent zoom",
+    "focus_ring": {
+      "width": "2px",
+      "color": "var(--primary)",
+      "offset": "2px",
+      "radius": "inherits element border-radius"
+    },
+    "disabled_state": {
+      "opacity": 0.5,
+      "cursor": "not-allowed",
+      "pointer_events": "none"
+    }
+  },
+  
+  "breakpoints": {
+    "sm": "640px",
+    "md": "768px",
+    "lg": "1024px",
+    "xl": "1280px",
+    "2xl": "1536px"
+  },
+  
+  "enforcement": {
+    "phase_3_priority": [
+      "Create all CSS variables for colors",
+      "Forbid direct Tailwind color usage via linting",
+      "Define CSS classes for typography scales",
+      "Consolidate button variants",
+      "Replace all z-index values with scale"
+    ],
+    "phase_4_priority": [
+      "Enforce spacing rules",
+      "Standardize elevation classes",
+      "Audit all components for token usage"
+    ],
+    "linting_rules": {
+      "no_direct_colors": "Forbid text-slate-*, bg-gray-*, etc.",
+      "no_hardcoded_values": "Forbid color: #hex, background: rgb()",
+      "no_arbitrary_z_index": "Only allow z-index values from scale"
+    }
+  },
+  
+  "notes": {
+    "safe_for_ai_tools": true,
+    "single_source_of_truth": true,
+    "no_ambiguity": "All values are explicit and canonical",
+    "versioned": "v2.0.0 - first canonical version post-audit",
+    "maintainer": "Product Designer + Engineering Lead"
+  }
+}
+
