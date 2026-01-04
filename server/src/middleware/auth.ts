@@ -16,8 +16,11 @@ export const requireAuth = async (
     // Use Clerk's getAuth to extract authenticated user info from the request
     const auth = getAuth(req);
     
+    console.log('requireAuth - auth object:', JSON.stringify(auth));
+    
     if (!auth || !auth.userId) {
-      console.log('No authenticated user found');
+      console.log('No authenticated user found - auth:', auth);
+      console.log('Authorization header:', req.headers.authorization?.substring(0, 50));
       return res.status(401).json({ error: 'Unauthorized - No valid session' });
     }
 
