@@ -20,6 +20,13 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
+  // Close auth modal when user signs in
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      setShowAuthModal(false);
+    }
+  }, [isLoaded, isSignedIn]);
+
   useEffect(() => {
     const loadReceipts = async () => {
       if (!isLoaded || !isSignedIn) {

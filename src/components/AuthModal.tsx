@@ -28,6 +28,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [pendingVerification, setPendingVerification] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
 
   const { signIn, setActive: setActiveSignIn } = useSignIn();
   const { signUp, setActive: setActiveSignUp } = useSignUp();
@@ -40,11 +42,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
     setError('');
 
     try {
-      await signIn?.authenticateWithRedirect({
+      // Use popup strategy for better SPA experience
+      const result = await signIn?.authenticateWithRedirect({
         strategy: 'oauth_google',
-        redirectUrl: '/sso-callback',
-        redirectUrlComplete: '/',
+        redirectUrl: window.location.origin,
+        redirectUrlComplete: window.location.origin,
       });
+      
+      // The redirect will happen automatically, so we keep loading state
     } catch (err: any) {
       setError(err.errors?.[0]?.message || 'Failed to sign in with Google');
       setGoogleLoading(false);
@@ -101,10 +106,33 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
       } else if (result.status === 'missing_requirements') {
         // Handle email verification if needed
         await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-        setError('Please check your email for a verification code');
+        setPendingVerification(true);
       }
     } catch (err: any) {
       setError(err.errors?.[0]?.message || 'Failed to create account');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!signUp) return;
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const result = await signUp.attemptEmailAddressVerification({
+        code: verificationCode,
+      });
+
+      if (result.status === 'complete') {
+        await setActiveSignUp({ session: result.createdSessionId });
+        onClose();
+      }
+    } catch (err: any) {
+      setError(err.errors?.[0]?.message || 'Invalid verification code');
     } finally {
       setLoading(false);
     }
@@ -219,7 +247,9 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
                 marginBottom: '4px',
               }}
             >
-              {mode === 'signin' ? 'Welcome back' : 'Create your account'}
+              {pendingVerification 
+                ? 'Verify your email' 
+                : mode === 'signin' ? 'Welcome back' : 'Create your account'}
             </h1>
             <p
               style={{
@@ -228,90 +258,96 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
                 margin: 0,
               }}
             >
-              {mode === 'signin' ? 'Sign in to your account' : 'Start managing receipts in minutes'}
+              {pendingVerification 
+                ? 'Enter the code we sent to your email' 
+                : mode === 'signin' ? 'Sign in to your account' : 'Start managing receipts in minutes'}
             </p>
           </div>
 
-          {/* Google Sign In Button */}
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={loading || googleLoading}
-            style={{
-              width: '100%',
-              height: '44px',
-              padding: '0 16px',
-              fontSize: 'var(--font-size-body)',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--text-primary)',
-              backgroundColor: 'var(--background-elevated)',
-              border: '1px solid var(--border-default)',
-              borderRadius: 'var(--radius-md)',
-              cursor: (loading || googleLoading) ? 'not-allowed' : 'pointer',
-              transition: 'var(--transition-default)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              opacity: (loading || googleLoading) ? 0.6 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (!loading && !googleLoading) {
-                e.currentTarget.style.backgroundColor = 'var(--background-muted)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!loading && !googleLoading) {
-                e.currentTarget.style.backgroundColor = 'var(--background-elevated)';
-              }
-            }}
-          >
-            {googleLoading ? (
-              <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
-            ) : (
-              <GoogleIcon />
-            )}
-            Continue with Google
-          </button>
-
-          {/* Divider */}
-          <div style={{ position: 'relative', margin: '20px 0' }}>
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              <div
+          {/* Google Sign In Button - only show when not in verification mode */}
+          {!pendingVerification && (
+            <>
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={loading || googleLoading}
                 style={{
                   width: '100%',
-                  height: '1px',
-                  backgroundColor: 'var(--border-default)',
-                }}
-              />
-            </div>
-            <div
-              style={{
-                position: 'relative',
-                display: 'flex',
-                justifyContent: 'center',
-              }}
-            >
-              <span
-                style={{
+                  height: '44px',
+                  padding: '0 16px',
+                  fontSize: 'var(--font-size-body)',
+                  fontWeight: 'var(--font-weight-medium)',
+                  color: 'var(--text-primary)',
                   backgroundColor: 'var(--background-elevated)',
-                  padding: '0 8px',
-                  fontSize: 'var(--font-size-tiny)',
-                  textTransform: 'uppercase',
-                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: (loading || googleLoading) ? 'not-allowed' : 'pointer',
+                  transition: 'var(--transition-default)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  opacity: (loading || googleLoading) ? 0.6 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!loading && !googleLoading) {
+                    e.currentTarget.style.backgroundColor = 'var(--background-muted)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!loading && !googleLoading) {
+                    e.currentTarget.style.backgroundColor = 'var(--background-elevated)';
+                  }
                 }}
               >
-                or continue with email
-              </span>
-            </div>
-          </div>
+                {googleLoading ? (
+                  <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                ) : (
+                  <GoogleIcon />
+                )}
+                Continue with Google
+              </button>
+
+              {/* Divider */}
+              <div style={{ position: 'relative', margin: '20px 0' }}>
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '100%',
+                      height: '1px',
+                      backgroundColor: 'var(--border-default)',
+                    }}
+                  />
+                </div>
+                <div
+                  style={{
+                    position: 'relative',
+                    display: 'flex',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <span
+                    style={{
+                      backgroundColor: 'var(--background-elevated)',
+                      padding: '0 8px',
+                      fontSize: 'var(--font-size-tiny)',
+                      textTransform: 'uppercase',
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    or continue with email
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Error message */}
           {error && (
@@ -348,21 +384,163 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
           )}
 
           {/* Form */}
-          <form
-            onSubmit={mode === 'signin' ? handleSignIn : handleSignUp}
-            style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
-          >
-            {mode === 'signup' && (
+          {pendingVerification ? (
+            // Verification Code Form
+            <form
+              onSubmit={handleVerifyCode}
+              style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
+            >
+              <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+                <p style={{ 
+                  fontSize: 'var(--font-size-body)', 
+                  color: 'var(--text-primary)',
+                  margin: '0 0 4px 0',
+                  fontWeight: 'var(--font-weight-medium)'
+                }}>
+                  Please check your email
+                </p>
+                <p style={{ 
+                  fontSize: 'var(--font-size-small)', 
+                  color: 'var(--text-secondary)',
+                  margin: 0
+                }}>
+                  We sent a verification code to <strong>{email}</strong>
+                </p>
+              </div>
+
               <div>
-                <label htmlFor="fullName" style={labelStyle}>
-                  Full name
+                <label htmlFor="verificationCode" style={labelStyle}>
+                  Verification code
                 </label>
                 <input
-                  id="fullName"
+                  id="verificationCode"
                   type="text"
-                  placeholder="John Smith"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Enter 6-digit code"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value)}
+                  required
+                  maxLength={6}
+                  style={{
+                    ...inputStyle,
+                    textAlign: 'center',
+                    fontSize: 'calc(var(--font-size-body) * 1.2)',
+                    letterSpacing: '0.25em'
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--primary)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--border-default)';
+                  }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading || verificationCode.length !== 6}
+                style={{
+                  width: '100%',
+                  height: '40px',
+                  padding: '0 16px',
+                  fontSize: 'var(--font-size-body)',
+                  fontWeight: 'var(--font-weight-semibold)',
+                  color: 'white',
+                  backgroundColor: (loading || verificationCode.length !== 6) ? 'var(--text-tertiary)' : 'var(--primary)',
+                  border: 'none',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: (loading || verificationCode.length !== 6) ? 'not-allowed' : 'pointer',
+                  transition: 'var(--transition-default)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+                onMouseEnter={(e) => {
+                  if (!loading && verificationCode.length === 6) {
+                    e.currentTarget.style.backgroundColor = 'var(--primary-hover)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!loading && verificationCode.length === 6) {
+                    e.currentTarget.style.backgroundColor = 'var(--primary)';
+                  }
+                }}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                    Verifying...
+                  </>
+                ) : (
+                  'Verify email'
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingVerification(false);
+                  setVerificationCode('');
+                  setError('');
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  fontSize: 'var(--font-size-small)',
+                  cursor: 'pointer',
+                  padding: '8px',
+                  textAlign: 'center',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = 'var(--text-primary)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--text-secondary)';
+                }}
+              >
+                ← Back to sign up
+              </button>
+            </form>
+          ) : (
+            // Regular Sign In/Sign Up Form
+            <form
+              onSubmit={mode === 'signin' ? handleSignIn : handleSignUp}
+              style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
+            >
+              {mode === 'signup' && (
+                <div>
+                  <label htmlFor="fullName" style={labelStyle}>
+                    Full name
+                  </label>
+                  <input
+                    id="fullName"
+                    type="text"
+                    placeholder="John Smith"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                    style={inputStyle}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--primary)';
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--border-default)';
+                    }}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="email" style={labelStyle}>
+                  Email
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  placeholder="you@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                   style={inputStyle}
                   onFocus={(e) => {
@@ -373,125 +551,106 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
                   }}
                 />
               </div>
-            )}
 
-            <div>
-              <label htmlFor="email" style={labelStyle}>
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                placeholder="you@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                style={inputStyle}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--primary)';
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--border-default)';
-                }}
-              />
-            </div>
+              <div>
+                <label htmlFor="password" style={labelStyle}>
+                  Password
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  style={inputStyle}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--primary)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--border-default)';
+                  }}
+                />
+              </div>
 
-            <div>
-              <label htmlFor="password" style={labelStyle}>
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={8}
-                style={inputStyle}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--primary)';
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--border-default)';
-                }}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading || googleLoading}
-              style={{
-                width: '100%',
-                height: '40px',
-                padding: '0 16px',
-                fontSize: 'var(--font-size-body)',
-                fontWeight: 'var(--font-weight-semibold)',
-                color: 'white',
-                backgroundColor: (loading || googleLoading) ? 'var(--text-tertiary)' : 'var(--primary)',
-                border: 'none',
-                borderRadius: 'var(--radius-md)',
-                cursor: (loading || googleLoading) ? 'not-allowed' : 'pointer',
-                transition: 'var(--transition-default)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                marginTop: '4px',
-              }}
-              onMouseEnter={(e) => {
-                if (!loading && !googleLoading) {
-                  e.currentTarget.style.backgroundColor = 'var(--primary-hover)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!loading && !googleLoading) {
-                  e.currentTarget.style.backgroundColor = 'var(--primary)';
-                }
-              }}
-            >
-              {loading ? (
-                <>
-                  <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
-                  {mode === 'signin' ? 'Signing in...' : 'Creating account...'}
-                </>
-              ) : (
-                mode === 'signin' ? 'Sign in' : 'Create account'
-              )}
-            </button>
-          </form>
-
-          {/* Footer */}
-          <div style={{ marginTop: '20px', textAlign: 'center' }}>
-            <p style={{ fontSize: 'var(--font-size-small)', color: 'var(--text-secondary)', margin: 0 }}>
-              {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
               <button
-                onClick={() => {
-                  setMode(mode === 'signin' ? 'signup' : 'signin');
-                  setError('');
-                  setFullName('');
-                  setEmail('');
-                  setPassword('');
-                }}
+                type="submit"
+                disabled={loading || googleLoading}
                 style={{
-                  background: 'none',
+                  width: '100%',
+                  height: '40px',
+                  padding: '0 16px',
+                  fontSize: 'var(--font-size-body)',
+                  fontWeight: 'var(--font-weight-semibold)',
+                  color: 'white',
+                  backgroundColor: (loading || googleLoading) ? 'var(--text-tertiary)' : 'var(--primary)',
                   border: 'none',
-                  color: 'var(--primary)',
-                  fontWeight: 'var(--font-weight-medium)',
-                  cursor: 'pointer',
-                  padding: 0,
+                  borderRadius: 'var(--radius-md)',
+                  cursor: (loading || googleLoading) ? 'not-allowed' : 'pointer',
+                  transition: 'var(--transition-default)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  marginTop: '4px',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.textDecoration = 'underline';
+                  if (!loading && !googleLoading) {
+                    e.currentTarget.style.backgroundColor = 'var(--primary-hover)';
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.textDecoration = 'none';
+                  if (!loading && !googleLoading) {
+                    e.currentTarget.style.backgroundColor = 'var(--primary)';
+                  }
                 }}
               >
-                {mode === 'signin' ? 'Sign up' : 'Sign in'}
+                {loading ? (
+                  <>
+                    <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                    {mode === 'signin' ? 'Signing in...' : 'Creating account...'}
+                  </>
+                ) : (
+                  mode === 'signin' ? 'Sign in' : 'Create account'
+                )}
               </button>
-            </p>
-          </div>
+            </form>
+          )}
+
+          {/* Footer */}
+          {!pendingVerification && (
+            <div style={{ marginTop: '20px', textAlign: 'center' }}>
+              <p style={{ fontSize: 'var(--font-size-small)', color: 'var(--text-secondary)', margin: 0 }}>
+                {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
+                <button
+                  onClick={() => {
+                    setMode(mode === 'signin' ? 'signup' : 'signin');
+                    setError('');
+                    setFullName('');
+                    setEmail('');
+                    setPassword('');
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--primary)',
+                    fontWeight: 'var(--font-weight-medium)',
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.textDecoration = 'underline';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.textDecoration = 'none';
+                  }}
+                >
+                  {mode === 'signin' ? 'Sign up' : 'Sign in'}
+                </button>
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
