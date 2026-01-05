@@ -48,9 +48,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
         redirectUrl: window.location.origin,
         redirectUrlComplete: window.location.origin,
       });
-      
-      // The redirect will happen automatically, so we keep loading state
     } catch (err: any) {
+      console.error('Google sign-in error:', err);
       setError(err.errors?.[0]?.message || 'Failed to sign in with Google');
       setGoogleLoading(false);
     }
