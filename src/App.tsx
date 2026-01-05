@@ -7,7 +7,7 @@ import ReceiptUpload from './components/ReceiptUpload';
 import ReceiptReview from './components/ReceiptReview';
 import AuthModal from './components/AuthModal';
 import UserMenu from './components/UserMenu';
-import { LayoutGrid, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { receiptApi, setAuthToken } from './services/apiService';
 
 const App: React.FC = () => {
@@ -190,22 +190,14 @@ const App: React.FC = () => {
               alignItems: 'center',
               gap: '8px',
             }}>
-              <div style={{
-                backgroundColor: 'var(--primary)',
-                padding: '6px',
-                borderRadius: 'var(--radius-md)',
-              }}>
-                 <LayoutGrid style={{ color: 'white', width: '20px', height: '20px' }} />
-              </div>
-              <span style={{
-                fontWeight: 'var(--font-weight-bold)',
-                fontSize: 'var(--font-size-h3)',
-                letterSpacing: '-0.02em',
-                color: 'var(--text-primary)',
-                fontFamily: 'var(--font-heading)',
-              }}>
-                Ollie
-              </span>
+              <img 
+                src="/logo.svg" 
+                alt="Ollie Receipts" 
+                style={{ 
+                  height: '24px',
+                  width: 'auto'
+                }} 
+              />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                {!isSignedIn ? (
@@ -347,7 +339,7 @@ const App: React.FC = () => {
                   color: 'var(--text-primary)',
                   fontFamily: 'var(--font-heading)',
                 }}>
-                  Costs inbox
+                  Costs Inbox
                 </h1>
              </div>
 

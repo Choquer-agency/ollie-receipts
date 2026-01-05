@@ -42,3 +42,4 @@ export interface Receipt {
   updated_at: Date;
 }
 
+

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { Upload, FileText, Loader2, CheckCircle2 } from 'lucide-react';
+import { Upload, FileText, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Receipt, ReceiptStatus } from '../types';
 import { parseReceiptImage } from '../services/geminiService';
 import { receiptApi } from '../services/apiService';
@@ -9,10 +9,17 @@ interface ReceiptUploadProps {
   onUploadComplete: (receipt: Receipt) => void;
 }
 
+interface UploadStats {
+  total: number;
+  completed: number;
+  duplicates: number;
+  successful: number;
+}
+
 const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [progress, setProgress] = useState({ total: 0, completed: 0 });
+  const [stats, setStats] = useState<UploadStats>({ total: 0, completed: 0, duplicates: 0, successful: 0 });
   const inputRef = useRef<HTMLInputElement>(null);
 
   const processFiles = async (files: FileList | File[]) => {
@@ -20,30 +27,58 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
 
     setIsProcessing(true);
     const total = files.length;
-    setProgress({ total, completed: 0 });
+    setStats({ total, completed: 0, duplicates: 0, successful: 0 });
+
+    // Step 1: Check for filename duplicates
+    const filesToCheck = Array.from(files).map(file => ({
+      filename: file.name,
+    }));
+
+    let duplicateFilenames = new Set<string>();
+    try {
+      const duplicateCheck = await receiptApi.checkDuplicates(filesToCheck);
+      duplicateCheck.results.forEach((result: any) => {
+        if (result.isDuplicate && result.reason === 'filename') {
+          duplicateFilenames.add(result.filename);
+        }
+      });
+    } catch (err) {
+      console.error('Error checking duplicates:', err);
+    }
 
     const processFile = async (file: File) => {
       try {
-        // Step 1: Get signed upload URL from backend
+        // Skip if duplicate filename
+        if (duplicateFilenames.has(file.name)) {
+          setStats(prev => ({ 
+            ...prev, 
+            completed: prev.completed + 1,
+            duplicates: prev.duplicates + 1,
+          }));
+          return;
+        }
+
+        // Step 2: Get signed upload URL from backend
         const { uploadUrl, publicUrl } = await receiptApi.getUploadUrl(file.name, file.type);
 
-        // Step 2: Upload file directly to R2
+        // Step 3: Upload file directly to R2
         await axios.put(uploadUrl, file, {
           headers: {
             'Content-Type': file.type,
           },
         });
 
-        // Step 3: Create receipt record with "uploading" status
+        // Step 4: Create receipt record with filename
         const newReceipt = await receiptApi.create({
           imageUrl: publicUrl,
           status: ReceiptStatus.UPLOADED,
+          originalFilename: file.name,
         });
 
         // Notify parent immediately
         onUploadComplete(newReceipt);
 
-        // Step 4: Process with Gemini OCR
+        // Step 5: Process with Gemini OCR
         try {
           // Read file for OCR
           const reader = new FileReader();
@@ -56,27 +91,59 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
 
           const parsedData = await parseReceiptImage(base64Data, mimeType);
           
-          // Update receipt with OCR data
-          const updatedReceipt = await receiptApi.update(newReceipt.id, {
-            ...parsedData,
-            vendorName: parsedData.vendor_name,
-            transactionDate: parsedData.transaction_date,
-            suggestedCategory: parsedData.suggested_category,
-            status: ReceiptStatus.OCR_COMPLETE,
-          });
-          
-          onUploadComplete(updatedReceipt);
+          // Check for transaction detail duplicates
+          const transactionCheck = await receiptApi.checkDuplicates([{
+            filename: file.name,
+            transactionDetails: {
+              vendorName: parsedData.vendor_name,
+              transactionDate: parsedData.transaction_date,
+              subtotal: parsedData.subtotal,
+              tax: parsedData.tax,
+              total: parsedData.total,
+            },
+          }]);
+
+          const isTransactionDuplicate = transactionCheck.results[0]?.isDuplicate && 
+                                        transactionCheck.results[0]?.reason === 'transaction_details';
+
+          if (isTransactionDuplicate) {
+            // Delete the receipt we just created and mark as duplicate
+            await receiptApi.delete(newReceipt.id);
+            setStats(prev => ({ 
+              ...prev, 
+              duplicates: prev.duplicates + 1,
+            }));
+          } else {
+            // Update receipt with OCR data
+            const updatedReceipt = await receiptApi.update(newReceipt.id, {
+              ...parsedData,
+              vendorName: parsedData.vendor_name,
+              transactionDate: parsedData.transaction_date,
+              suggestedCategory: parsedData.suggested_category,
+              status: ReceiptStatus.OCR_COMPLETE,
+            });
+            
+            onUploadComplete(updatedReceipt);
+            setStats(prev => ({ 
+              ...prev, 
+              successful: prev.successful + 1,
+            }));
+          }
         } catch (err) {
           console.error('OCR error:', err);
           const errorReceipt = await receiptApi.update(newReceipt.id, {
             status: ReceiptStatus.ERROR,
           });
           onUploadComplete(errorReceipt);
+          setStats(prev => ({ 
+            ...prev, 
+            successful: prev.successful + 1,
+          }));
         }
       } catch (err) {
         console.error("File upload error", err);
       } finally {
-        setProgress(prev => ({ ...prev, completed: prev.completed + 1 }));
+        setStats(prev => ({ ...prev, completed: prev.completed + 1 }));
       }
     };
 
@@ -88,7 +155,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
     }
 
     setIsProcessing(false);
-    setTimeout(() => setProgress({ total: 0, completed: 0 }), 3000);
+    setTimeout(() => setStats({ total: 0, completed: 0, duplicates: 0, successful: 0 }), 5000);
   };
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -117,7 +184,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
     }
   };
 
-  const progressPercent = progress.total > 0 ? (progress.completed / progress.total) * 100 : 0;
+  const progressPercent = stats.total > 0 ? (stats.completed / stats.total) * 100 : 0;
 
   const dropzoneStyles: React.CSSProperties = {
     position: 'relative',
@@ -198,7 +265,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
                    fontWeight: 'var(--font-weight-bold)',
                    color: 'var(--text-primary)',
                  }}>
-                   Processing {progress.total} documents
+                   Processing {stats.total} documents
                  </p>
                  <p style={{
                    fontSize: 'var(--font-size-small)',
@@ -273,7 +340,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
         />
       </div>
 
-      {progress.total > 0 && (
+      {stats.total > 0 && (
         <div style={{
           backgroundColor: 'var(--background-elevated)',
           padding: 'var(--spacing-4)',
@@ -292,14 +359,14 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
                 fontWeight: 'var(--font-weight-bold)',
                 color: 'var(--text-primary)',
               }}>
-                {progress.completed === progress.total ? 'Upload complete' : `Uploading ${progress.total} items...`}
+                {stats.completed === stats.total ? 'Upload complete' : `Uploading ${stats.total} items...`}
               </span>
               <span style={{
                 fontSize: 'var(--font-size-small)',
                 fontFamily: 'var(--font-mono)',
                 color: 'var(--text-tertiary)',
               }}>
-                {progress.completed} / {progress.total}
+                {stats.completed} / {stats.total}
               </span>
            </div>
            <div style={{
@@ -319,17 +386,32 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
                 }}
               />
            </div>
-           {progress.completed === progress.total && (
-             <div style={{
-               marginTop: 'var(--spacing-2)',
-               display: 'flex',
-               alignItems: 'center',
-               gap: 'var(--spacing-2)',
-               fontSize: 'var(--font-size-small)',
-               fontWeight: 'var(--font-weight-semibold)',
-               color: 'var(--status-success-text)',
-             }}>
-               <CheckCircle2 size={14} /> All items are ready for review below.
+           {stats.completed === stats.total && (
+             <div style={{ marginTop: 'var(--spacing-3)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-2)' }}>
+               {stats.successful > 0 && (
+                 <div style={{
+                   display: 'flex',
+                   alignItems: 'center',
+                   gap: 'var(--spacing-2)',
+                   fontSize: 'var(--font-size-small)',
+                   fontWeight: 'var(--font-weight-semibold)',
+                   color: 'var(--status-success-text)',
+                 }}>
+                   <CheckCircle2 size={14} /> {stats.successful} {stats.successful === 1 ? 'receipt' : 'receipts'} ready for review below
+                 </div>
+               )}
+               {stats.duplicates > 0 && (
+                 <div style={{
+                   display: 'flex',
+                   alignItems: 'center',
+                   gap: 'var(--spacing-2)',
+                   fontSize: 'var(--font-size-small)',
+                   fontWeight: 'var(--font-weight-semibold)',
+                   color: 'var(--text-secondary)',
+                 }}>
+                   <AlertCircle size={14} /> {stats.duplicates} {stats.duplicates === 1 ? 'receipt was a duplicate' : 'receipts were duplicates'}
+                 </div>
+               )}
              </div>
            )}
         </div>

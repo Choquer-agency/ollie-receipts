@@ -10,6 +10,7 @@ import { z } from 'zod';
 const createReceiptSchema = z.object({
   imageUrl: z.string().url(),
   status: z.string(),
+  originalFilename: z.string().optional(),
   vendorName: z.string().optional(),
   transactionDate: z.string().optional(),
   subtotal: z.number().optional(),
@@ -28,6 +29,69 @@ const createReceiptSchema = z.object({
 });
 
 const updateReceiptSchema = createReceiptSchema.partial();
+
+// Helper function to check for duplicates
+interface DuplicateCheckResult {
+  isDuplicate: boolean;
+  reason?: 'filename' | 'transaction_details';
+  existingReceiptId?: string;
+}
+
+const checkForDuplicate = async (
+  userId: string,
+  filename?: string,
+  transactionDetails?: {
+    vendorName?: string;
+    transactionDate?: string;
+    subtotal?: number;
+    tax?: number;
+    total?: number;
+  }
+): Promise<DuplicateCheckResult> => {
+  // Check 1: Filename match
+  if (filename) {
+    const filenameMatches = await sql`
+      SELECT id FROM receipts
+      WHERE user_id = ${userId}
+      AND original_filename = ${filename}
+      LIMIT 1
+    `;
+    
+    if (filenameMatches.length > 0) {
+      return {
+        isDuplicate: true,
+        reason: 'filename',
+        existingReceiptId: filenameMatches[0].id,
+      };
+    }
+  }
+
+  // Check 2: Transaction details match (all fields must match)
+  if (transactionDetails?.vendorName && 
+      transactionDetails?.transactionDate && 
+      transactionDetails?.total !== undefined) {
+    const detailsMatches = await sql`
+      SELECT id FROM receipts
+      WHERE user_id = ${userId}
+      AND vendor_name = ${transactionDetails.vendorName}
+      AND transaction_date = ${transactionDetails.transactionDate}
+      AND total = ${transactionDetails.total}
+      AND COALESCE(tax, 0) = ${transactionDetails.tax || 0}
+      AND COALESCE(subtotal, 0) = ${transactionDetails.subtotal || 0}
+      LIMIT 1
+    `;
+    
+    if (detailsMatches.length > 0) {
+      return {
+        isDuplicate: true,
+        reason: 'transaction_details',
+        existingReceiptId: detailsMatches[0].id,
+      };
+    }
+  }
+
+  return { isDuplicate: false };
+};
 
 export const getReceipts = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -89,13 +153,13 @@ export const createReceipt = async (req: AuthenticatedRequest, res: Response) =>
 
     const receipt = await sql`
       INSERT INTO receipts (
-        user_id, image_url, status, vendor_name, transaction_date,
+        user_id, image_url, status, original_filename, vendor_name, transaction_date,
         subtotal, tax, total, currency, suggested_category,
         description, document_type, tax_treatment, tax_rate,
         publish_target, is_paid, payment_account_id, qb_account_id
       )
       VALUES (
-        ${req.userId}, ${data.imageUrl}, ${data.status},
+        ${req.userId}, ${data.imageUrl}, ${data.status}, ${data.originalFilename || null},
         ${data.vendorName || null}, ${data.transactionDate || null},
         ${data.subtotal || null}, ${data.tax || null}, ${data.total || null},
         ${data.currency || 'USD'}, ${data.suggestedCategory || null},
@@ -214,6 +278,49 @@ export const getUploadUrl = async (req: AuthenticatedRequest, res: Response) => 
   } catch (error) {
     console.error('Get upload URL error:', error);
     res.status(500).json({ error: 'Failed to generate upload URL' });
+  }
+};
+
+// New endpoint: Check for duplicates
+const checkDuplicatesSchema = z.object({
+  files: z.array(z.object({
+    filename: z.string(),
+    transactionDetails: z.object({
+      vendorName: z.string().optional(),
+      transactionDate: z.string().optional(),
+      subtotal: z.number().optional(),
+      tax: z.number().optional(),
+      total: z.number().optional(),
+    }).optional(),
+  })),
+});
+
+export const checkDuplicates = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const data = checkDuplicatesSchema.parse(req.body);
+    
+    const results = await Promise.all(
+      data.files.map(async (file) => {
+        const duplicateCheck = await checkForDuplicate(
+          req.userId!,
+          file.filename,
+          file.transactionDetails
+        );
+        
+        return {
+          filename: file.filename,
+          ...duplicateCheck,
+        };
+      })
+    );
+
+    res.json({ results });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid request data', details: error.errors });
+    }
+    console.error('Check duplicates error:', error);
+    res.status(500).json({ error: 'Failed to check duplicates' });
   }
 };
 

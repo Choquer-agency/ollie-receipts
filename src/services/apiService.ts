@@ -63,6 +63,20 @@ export const receiptApi = {
     });
     return response.data;
   },
+
+  checkDuplicates: async (files: Array<{
+    filename: string;
+    transactionDetails?: {
+      vendorName?: string;
+      transactionDate?: string;
+      subtotal?: number;
+      tax?: number;
+      total?: number;
+    };
+  }>) => {
+    const response = await api.post('/api/receipts/check-duplicates', { files });
+    return response.data;
+  },
 };
 
 export default api;

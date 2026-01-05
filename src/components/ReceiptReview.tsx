@@ -274,7 +274,7 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
         <div style={{
           width: '50%',
           height: '100%',
-          backgroundColor: '#1a1a1a',
+          backgroundColor: '#E8E6E0',
           display: 'flex',
           flexDirection: 'column',
           position: 'relative',
@@ -359,11 +359,10 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
             {/* Item Details Section */}
             <div>
               <h3 style={{
-                fontSize: 'var(--font-size-small)',
+                fontSize: '0.9rem',
                 fontWeight: 'var(--font-weight-bold)',
                 color: 'var(--text-tertiary)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
+                fontFamily: 'var(--font-heading)',
                 marginBottom: '16px',
                 borderBottom: '1px solid var(--border-default)',
                 paddingBottom: '4px',
@@ -486,11 +485,10 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
             {/* Amount Section */}
             <div>
               <h3 style={{
-                fontSize: 'var(--font-size-small)',
+                fontSize: '0.9rem',
                 fontWeight: 'var(--font-weight-bold)',
                 color: 'var(--text-tertiary)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
+                fontFamily: 'var(--font-heading)',
                 marginBottom: '16px',
                 borderBottom: '1px solid var(--border-default)',
                 paddingBottom: '4px',
@@ -673,11 +671,10 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
             {/* Payment Section */}
             <div>
               <h3 style={{
-                fontSize: 'var(--font-size-small)',
+                fontSize: '0.9rem',
                 fontWeight: 'var(--font-weight-bold)',
                 color: 'var(--text-tertiary)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
+                fontFamily: 'var(--font-heading)',
                 marginBottom: '16px',
                 borderBottom: '1px solid var(--border-default)',
                 paddingBottom: '4px',

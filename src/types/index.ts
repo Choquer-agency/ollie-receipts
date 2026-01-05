@@ -14,6 +14,9 @@ export interface Receipt {
   image_url: string; // Base64 for this MVP, URL in prod
   status: ReceiptStatus;
   
+  // File metadata
+  original_filename?: string;
+  
   // OCR Extracted & Review Fields
   vendor_name?: string;
   transaction_date?: string;

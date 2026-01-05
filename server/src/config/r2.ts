@@ -27,3 +27,4 @@ export const r2Client = new S3Client({
 export const R2_BUCKET_NAME = process.env.CLOUDFLARE_R2_BUCKET_NAME || 'ollie-receipts';
 export const R2_PUBLIC_URL = process.env.CLOUDFLARE_R2_PUBLIC_URL || '';
 
+

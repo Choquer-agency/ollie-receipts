@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS receipts (
   image_url TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'uploaded',
   
+  -- File metadata for duplicate detection
+  original_filename TEXT,
+  
   -- OCR extracted fields
   vendor_name TEXT,
   transaction_date DATE,
@@ -55,6 +58,7 @@ CREATE TABLE IF NOT EXISTS receipts (
 CREATE INDEX IF NOT EXISTS idx_receipts_user_id ON receipts(user_id);
 CREATE INDEX IF NOT EXISTS idx_receipts_status ON receipts(status);
 CREATE INDEX IF NOT EXISTS idx_receipts_created_at ON receipts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_receipts_filename ON receipts(user_id, original_filename);
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
