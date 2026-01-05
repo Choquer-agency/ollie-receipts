@@ -97,7 +97,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
             transactionDetails: {
               vendorName: parsedData.vendor_name,
               transactionDate: parsedData.transaction_date,
-              subtotal: parsedData.subtotal,
               tax: parsedData.tax,
               total: parsedData.total,
             },

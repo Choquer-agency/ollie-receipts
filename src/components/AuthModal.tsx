@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useSignIn, useSignUp, useClerk } from '@clerk/clerk-react';
+import { useSignIn, useSignUp } from '@clerk/clerk-react';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 
 // Google icon component
@@ -31,7 +31,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
 
   const { signIn, setActive: setActiveSignIn } = useSignIn();
   const { signUp, setActive: setActiveSignUp } = useSignUp();
-  const clerk = useClerk();
 
   if (!isOpen) return null;
 
@@ -41,7 +40,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
     setError('');
 
     try {
-      await clerk.authenticateWithRedirect({
+      await signIn?.authenticateWithRedirect({
         strategy: 'oauth_google',
         redirectUrl: '/sso-callback',
         redirectUrlComplete: '/',
