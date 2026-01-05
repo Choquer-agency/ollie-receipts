@@ -42,8 +42,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
     setError('');
 
     try {
-      // Use popup strategy for better SPA experience
-      const result = await signIn?.authenticateWithRedirect({
+      // Use redirect strategy for OAuth flow
+      await signIn?.authenticateWithRedirect({
         strategy: 'oauth_google',
         redirectUrl: window.location.origin,
         redirectUrlComplete: window.location.origin,
