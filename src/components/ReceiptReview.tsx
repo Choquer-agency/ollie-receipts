@@ -108,6 +108,11 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
   }, []);
 
   const getTaxCalculationText = useCallback(() => {
+    // Debug: Check the raw values before conversion
+    console.log('getTaxCalculationText - RAW formData.total:', formData.total, 'type:', typeof formData.total);
+    console.log('getTaxCalculationText - RAW formData.tax_rate:', formData.tax_rate, 'type:', typeof formData.tax_rate);
+    console.log('getTaxCalculationText - RAW formData.tax:', formData.tax, 'type:', typeof formData.tax);
+    
     // Safely convert to numbers, default to 0 if invalid
     const total = typeof formData.total === 'number' && !isNaN(formData.total) ? formData.total : 0;
     const rate = typeof formData.tax_rate === 'number' && !isNaN(formData.tax_rate) ? formData.tax_rate : 0;
