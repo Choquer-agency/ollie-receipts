@@ -150,11 +150,18 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
   };
 
   const handleSave = () => {
-    onUpdate({
+    // Clean up data before sending to API
+    const updatedData = {
       ...receipt,
       ...formData,
-      status: ReceiptStatus.REVIEWED
-    } as Receipt);
+      status: ReceiptStatus.REVIEWED,
+      // Ensure transaction_date is either a valid yyyy-MM-dd string or undefined (not empty string)
+      transaction_date: formData.transaction_date && formData.transaction_date.trim() !== '' 
+        ? formData.transaction_date 
+        : undefined,
+    };
+    
+    onUpdate(updatedData as Receipt);
     onBack();
   };
 
