@@ -113,10 +113,19 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     console.log('getTaxCalculationText - RAW formData.tax_rate:', formData.tax_rate, 'type:', typeof formData.tax_rate);
     console.log('getTaxCalculationText - RAW formData.tax:', formData.tax, 'type:', typeof formData.tax);
     
-    // Safely convert to numbers, default to 0 if invalid
-    const total = typeof formData.total === 'number' && !isNaN(formData.total) ? formData.total : 0;
-    const rate = typeof formData.tax_rate === 'number' && !isNaN(formData.tax_rate) ? formData.tax_rate : 0;
-    const tax = typeof formData.tax === 'number' && !isNaN(formData.tax) ? formData.tax : 0;
+    // Safely convert to numbers - handle both strings and numbers
+    const parseToNumber = (value: any): number => {
+      if (typeof value === 'number' && !isNaN(value)) return value;
+      if (typeof value === 'string' && value.trim() !== '') {
+        const parsed = parseFloat(value);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+      return 0;
+    };
+    
+    const total = parseToNumber(formData.total);
+    const rate = parseToNumber(formData.tax_rate);
+    const tax = parseToNumber(formData.tax);
     const treatment = formData.tax_treatment || 'Inclusive';
     
     // Debug logging
