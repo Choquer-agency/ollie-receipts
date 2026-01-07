@@ -76,7 +76,30 @@ const App: React.FC = () => {
   const handleUpdateReceipt = async (updated: Receipt) => {
     try {
       console.log('handleUpdateReceipt - sending to API:', updated);
-      await receiptApi.update(updated.id, updated);
+      
+      // Transform snake_case to camelCase for API
+      const apiData = {
+        imageUrl: updated.image_url,
+        status: updated.status,
+        originalFilename: updated.original_filename,
+        vendorName: updated.vendor_name,
+        transactionDate: updated.transaction_date,
+        subtotal: updated.subtotal,
+        tax: updated.tax,
+        total: updated.total,
+        currency: updated.currency,
+        suggestedCategory: updated.suggested_category,
+        description: updated.description,
+        documentType: updated.document_type,
+        taxTreatment: updated.tax_treatment,
+        taxRate: updated.tax_rate,
+        publishTarget: updated.publish_target,
+        isPaid: updated.is_paid,
+        paymentAccountId: updated.payment_account_id,
+        qbAccountId: updated.qb_account_id,
+      };
+      
+      await receiptApi.update(updated.id, apiData);
       setReceipts(prev => prev.map(r => r.id === updated.id ? updated : r));
     } catch (error: any) {
       console.error('Failed to update receipt:', error);

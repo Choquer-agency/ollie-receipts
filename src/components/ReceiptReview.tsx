@@ -62,18 +62,36 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
   console.log('ReceiptReview received receipt:', receipt);
   console.log('Receipt total:', receipt.total, 'Receipt tax:', receipt.tax, 'Receipt tax_rate:', receipt.tax_rate);
   
-  const [formData, setFormData] = useState<Partial<Receipt>>({ 
-    // Start with receipt data
-    ...receipt,
-    // Override/set defaults only for fields that are null/undefined
-    document_type: receipt.document_type || 'Receipt',
-    publish_target: receipt.publish_target || 'Expense',
-    is_paid: receipt.is_paid !== undefined ? receipt.is_paid : true,
-    currency: receipt.currency || 'CAD',
-    tax_treatment: receipt.tax_treatment || 'Inclusive',
-    tax_rate: (receipt.tax && receipt.tax > 0) ? -1 : 0,
-    // Override transaction_date with properly formatted version for HTML date input
-    transaction_date: formatDateForInput(receipt.transaction_date)
+  // Helper to safely parse numeric values that might come as strings
+  const safeParseNumber = (value: any): number | undefined => {
+    if (value === null || value === undefined || value === '') return undefined;
+    const parsed = typeof value === 'number' ? value : parseFloat(String(value));
+    return isNaN(parsed) ? undefined : parsed;
+  };
+
+  const [formData, setFormData] = useState<Partial<Receipt>>(() => {
+    // Parse numeric fields to ensure they're numbers, not strings
+    const total = safeParseNumber(receipt.total);
+    const tax = safeParseNumber(receipt.tax);
+    const subtotal = safeParseNumber(receipt.subtotal);
+    
+    return {
+      // Start with receipt data
+      ...receipt,
+      // Ensure numeric fields are actually numbers
+      total,
+      tax,
+      subtotal,
+      // Override/set defaults only for fields that are null/undefined
+      document_type: receipt.document_type || 'Receipt',
+      publish_target: receipt.publish_target || 'Expense',
+      is_paid: receipt.is_paid !== undefined ? receipt.is_paid : true,
+      currency: receipt.currency || 'CAD',
+      tax_treatment: receipt.tax_treatment || 'Inclusive',
+      tax_rate: (tax && tax > 0) ? -1 : 0,
+      // Override transaction_date with properly formatted version for HTML date input
+      transaction_date: formatDateForInput(receipt.transaction_date)
+    };
   });
   
   // Debug: Log formData after initialization
@@ -157,9 +175,9 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     const { name, value } = e.target;
     let newValue: any = value;
     
-    if (name === 'total' || name === 'tax' || name === 'tax_rate') {
-      const parsed = parseFloat(value);
-      newValue = isNaN(parsed) ? undefined : parsed;
+    // Convert numeric fields to actual numbers, not strings
+    if (name === 'total' || name === 'tax' || name === 'tax_rate' || name === 'subtotal') {
+      newValue = safeParseNumber(value);
     }
 
     setFormData(prev => {
@@ -170,24 +188,24 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
       }
 
       if (name === 'tax_rate' && newValue !== -1 && newValue !== undefined) {
-        const total = prev.total || 0;
+        const total = safeParseNumber(prev.total) || 0;
         const rate = newValue;
         const treatment = prev.tax_treatment || 'Inclusive';
-        updated.tax = parseFloat(calculateTax(total, rate, treatment).toFixed(2));
+        updated.tax = safeParseNumber(calculateTax(total, rate, treatment).toFixed(2));
       }
 
       if (name === 'total' && prev.tax_rate !== undefined && prev.tax_rate !== -1 && newValue !== undefined) {
         const total = newValue;
-        const rate = prev.tax_rate;
+        const rate = safeParseNumber(prev.tax_rate) || 0;
         const treatment = prev.tax_treatment || 'Inclusive';
-        updated.tax = parseFloat(calculateTax(total, rate, treatment).toFixed(2));
+        updated.tax = safeParseNumber(calculateTax(total, rate, treatment).toFixed(2));
       }
 
       if (name === 'tax_treatment' && prev.tax_rate !== undefined && prev.tax_rate !== -1) {
-        const total = prev.total || 0;
-        const rate = prev.tax_rate;
+        const total = safeParseNumber(prev.total) || 0;
+        const rate = safeParseNumber(prev.tax_rate) || 0;
         const treatment = newValue as TaxTreatment;
-        updated.tax = parseFloat(calculateTax(total, rate, treatment).toFixed(2));
+        updated.tax = safeParseNumber(calculateTax(total, rate, treatment).toFixed(2));
       }
       
       return updated;
@@ -199,21 +217,46 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
   };
 
   const handleSave = () => {
-    // Clean up data before sending to API
+    // Clean up data before sending to API - convert to camelCase for backend
     const updatedData = {
-      ...receipt,
-      ...formData,
+      // Backend expects camelCase field names
+      imageUrl: formData.image_url,
       status: ReceiptStatus.REVIEWED,
-      // Ensure transaction_date is either a valid yyyy-MM-dd string or undefined (not empty string)
-      transaction_date: formData.transaction_date && formData.transaction_date.trim() !== '' 
+      originalFilename: formData.original_filename,
+      vendorName: formData.vendor_name,
+      transactionDate: formData.transaction_date && formData.transaction_date.trim() !== '' 
         ? formData.transaction_date 
         : undefined,
+      subtotal: formData.subtotal !== undefined ? parseFloat(String(formData.subtotal)) : undefined,
+      tax: formData.tax !== undefined ? parseFloat(String(formData.tax)) : undefined,
+      total: formData.total !== undefined ? parseFloat(String(formData.total)) : undefined,
+      currency: formData.currency,
+      suggestedCategory: formData.suggested_category,
+      description: formData.description,
+      documentType: formData.document_type,
+      taxTreatment: formData.tax_treatment,
+      taxRate: formData.tax_rate !== undefined ? parseFloat(String(formData.tax_rate)) : undefined,
+      publishTarget: formData.publish_target,
+      isPaid: formData.is_paid,
+      paymentAccountId: formData.payment_account_id,
+      qbAccountId: formData.qb_account_id,
     };
     
     console.log('handleSave - updatedData being sent to API:', updatedData);
     console.log('handleSave - updatedData.total:', updatedData.total, 'updatedData.tax:', updatedData.tax);
     
-    onUpdate(updatedData as Receipt);
+    // Create a receipt object with both camelCase (for display) and the original receipt data
+    const receiptForUpdate = {
+      ...receipt,
+      ...formData,
+      status: ReceiptStatus.REVIEWED,
+      total: updatedData.total,
+      tax: updatedData.tax,
+      subtotal: updatedData.subtotal,
+      tax_rate: updatedData.taxRate,
+    } as Receipt;
+    
+    onUpdate(receiptForUpdate);
     onBack();
   };
 
@@ -228,12 +271,21 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
 
     try {
       const qbTxnId = await publishReceipt(receipt, formData.qb_account_id);
-      onUpdate({
+      
+      // Create a properly formatted receipt object
+      const publishedReceipt = {
         ...receipt,
         ...formData,
         qb_transaction_id: qbTxnId,
-        status: ReceiptStatus.PUBLISHED
-      } as Receipt);
+        status: ReceiptStatus.PUBLISHED,
+        // Ensure numeric fields are numbers
+        total: formData.total !== undefined ? parseFloat(String(formData.total)) : undefined,
+        tax: formData.tax !== undefined ? parseFloat(String(formData.tax)) : undefined,
+        subtotal: formData.subtotal !== undefined ? parseFloat(String(formData.subtotal)) : undefined,
+        tax_rate: formData.tax_rate !== undefined ? parseFloat(String(formData.tax_rate)) : undefined,
+      } as Receipt;
+      
+      onUpdate(publishedReceipt);
       onBack();
     } catch (err) {
       setError("Failed to publish to QuickBooks. Please try again.");

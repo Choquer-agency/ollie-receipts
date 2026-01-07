@@ -113,11 +113,13 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
               duplicates: prev.duplicates + 1,
             }));
           } else {
-            // Update receipt with OCR data
+            // Update receipt with OCR data - convert snake_case to camelCase for API
             const updatedReceipt = await receiptApi.update(newReceipt.id, {
-              ...parsedData,
               vendorName: parsedData.vendor_name,
               transactionDate: parsedData.transaction_date,
+              tax: parsedData.tax,
+              total: parsedData.total,
+              currency: parsedData.currency,
               suggestedCategory: parsedData.suggested_category,
               status: ReceiptStatus.OCR_COMPLETE,
             });
