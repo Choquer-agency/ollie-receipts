@@ -44,6 +44,19 @@ const TAX_RATES = [
   { label: 'PST/GST (12%)', value: 0.12 },
 ];
 
+// Helper function to convert ISO date to yyyy-MM-dd format for HTML date input
+const formatDateForInput = (dateString: string | undefined): string => {
+  if (!dateString) return '';
+  try {
+    // Convert ISO date (2026-01-06T00:00:00.000Z) to yyyy-MM-dd format
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    return date.toISOString().split('T')[0];
+  } catch {
+    return '';
+  }
+};
+
 const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack }) => {
   const [formData, setFormData] = useState<Partial<Receipt>>({ 
     document_type: 'Receipt',
@@ -52,7 +65,9 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     currency: 'CAD',
     tax_treatment: 'Inclusive',
     tax_rate: (receipt.tax && receipt.tax > 0) ? -1 : 0,
-    ...receipt 
+    ...receipt,
+    // Override transaction_date with properly formatted version for HTML date input
+    transaction_date: formatDateForInput(receipt.transaction_date)
   });
   
   const [expenseAccounts, setExpenseAccounts] = useState<QuickBooksAccount[]>([]);
@@ -89,18 +104,28 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     const tax = typeof formData.tax === 'number' && !isNaN(formData.tax) ? formData.tax : 0;
     const treatment = formData.tax_treatment || 'Inclusive';
     
+    // Debug logging
+    console.log('getTaxCalculationText debug:', { total, rate, tax, treatment });
+    
     // Don't show calculation if rate is not set, is manual, or No Tax
-    if (rate === -1 || rate === 0 || total === 0) return null;
+    if (rate === -1 || rate === 0 || total === 0) {
+      console.log('Returning null because:', { rateIsNegativeOne: rate === -1, rateIsZero: rate === 0, totalIsZero: total === 0 });
+      return null;
+    }
     
     const ratePercent = (rate * 100).toFixed(rate * 100 === Math.floor(rate * 100) ? 0 : 1);
     const taxRateLabel = TAX_RATES.find(r => r.value === rate)?.label.split('(')[0].trim() || 'Tax';
     
     if (treatment === 'Inclusive') {
       const subtotal = total - tax;
-      return `$${total.toFixed(2)} includes $${tax.toFixed(2)} ${taxRateLabel} (${ratePercent}%) → Subtotal: $${subtotal.toFixed(2)}`;
+      const result = `$${total.toFixed(2)} includes $${tax.toFixed(2)} ${taxRateLabel} (${ratePercent}%) → Subtotal: $${subtotal.toFixed(2)}`;
+      console.log('Returning calculation text:', result);
+      return result;
     } else {
       const newTotal = total + tax;
-      return `$${total.toFixed(2)} + $${tax.toFixed(2)} ${taxRateLabel} (${ratePercent}%) → Total: $${newTotal.toFixed(2)}`;
+      const result = `$${total.toFixed(2)} + $${tax.toFixed(2)} ${taxRateLabel} (${ratePercent}%) → Total: $${newTotal.toFixed(2)}`;
+      console.log('Returning calculation text:', result);
+      return result;
     }
   }, [formData.total, formData.tax_rate, formData.tax, formData.tax_treatment]);
 

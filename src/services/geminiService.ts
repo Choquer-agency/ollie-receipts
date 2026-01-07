@@ -58,7 +58,13 @@ export const parseReceiptImage = async (base64Data: string, mimeType: string): P
     const text = response.text;
     if (!text) throw new Error("No data returned from Gemini");
 
-    return JSON.parse(text.trim()) as ParsedReceiptData;
+    const parsed = JSON.parse(text.trim()) as ParsedReceiptData;
+    
+    // Debug logging to see what OCR extracted
+    console.log('OCR Extraction Result:', parsed);
+    console.log('Transaction Date extracted:', parsed.transaction_date);
+
+    return parsed;
 
   } catch (error) {
     console.error("OCR Error:", error);
