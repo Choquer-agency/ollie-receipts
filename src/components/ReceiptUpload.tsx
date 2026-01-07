@@ -75,8 +75,8 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
           originalFilename: file.name,
         });
 
-        // Notify parent immediately
-        onUploadComplete(newReceipt);
+        // Don't notify parent yet - wait for OCR to complete
+        // This prevents showing receipts that may be duplicates
 
         // Step 5: Process with Gemini OCR
         try {
