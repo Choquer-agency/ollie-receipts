@@ -75,33 +75,51 @@ const App: React.FC = () => {
 
   const handleUpdateReceipt = async (updated: Receipt) => {
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/df6db7d3-a15f-4506-8cab-965bf7d93b29',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:76',message:'handleUpdateReceipt - receipt before transform',data:{updated},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      
       console.log('handleUpdateReceipt - sending to API:', updated);
       
       // Transform snake_case to camelCase for API
-      const apiData = {
+      // Convert null to undefined (Zod's .optional() accepts undefined but not null)
+      const apiData: any = {
         imageUrl: updated.image_url,
         status: updated.status,
-        originalFilename: updated.original_filename,
-        vendorName: updated.vendor_name,
-        transactionDate: updated.transaction_date,
-        subtotal: updated.subtotal,
-        tax: updated.tax,
-        total: updated.total,
-        currency: updated.currency,
-        suggestedCategory: updated.suggested_category,
-        description: updated.description,
-        documentType: updated.document_type,
-        taxTreatment: updated.tax_treatment,
-        taxRate: updated.tax_rate,
-        publishTarget: updated.publish_target,
-        isPaid: updated.is_paid,
-        paymentAccountId: updated.payment_account_id,
-        qbAccountId: updated.qb_account_id,
+        originalFilename: updated.original_filename ?? undefined,
+        vendorName: updated.vendor_name ?? undefined,
+        transactionDate: updated.transaction_date ?? undefined,
+        subtotal: updated.subtotal ?? undefined,
+        tax: updated.tax ?? undefined,
+        total: updated.total ?? undefined,
+        currency: updated.currency ?? undefined,
+        suggestedCategory: updated.suggested_category ?? undefined,
+        description: updated.description ?? undefined,
+        documentType: updated.document_type ?? undefined,
+        taxTreatment: updated.tax_treatment ?? undefined,
+        taxRate: updated.tax_rate ?? undefined,
+        publishTarget: updated.publish_target ?? undefined,
+        isPaid: updated.is_paid ?? undefined,
+        paymentAccountId: updated.payment_account_id ?? undefined,
+        qbAccountId: updated.qb_account_id ?? undefined,
       };
       
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/df6db7d3-a15f-4506-8cab-965bf7d93b29',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:107',message:'handleUpdateReceipt - apiData after transform',data:{apiData,nullCount:Object.values(apiData).filter(v=>v===null).length,undefinedCount:Object.values(apiData).filter(v=>v===undefined).length},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      
       await receiptApi.update(updated.id, apiData);
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/df6db7d3-a15f-4506-8cab-965bf7d93b29',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:112',message:'handleUpdateReceipt - update successful',data:{receiptId:updated.id},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      
       setReceipts(prev => prev.map(r => r.id === updated.id ? updated : r));
     } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/df6db7d3-a15f-4506-8cab-965bf7d93b29',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:119',message:'handleUpdateReceipt - error caught',data:{errorMessage:error.message,responseData:error.response?.data,responseStatus:error.response?.status,validationDetails:error.response?.data?.details},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      
       console.error('Failed to update receipt:', error);
       console.error('Error response:', error.response?.data);
       console.error('Error status:', error.response?.status);
