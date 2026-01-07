@@ -58,6 +58,10 @@ const formatDateForInput = (dateString: string | undefined): string => {
 };
 
 const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack }) => {
+  // Debug: Log the receipt prop to see what data we're receiving
+  console.log('ReceiptReview received receipt:', receipt);
+  console.log('Receipt total:', receipt.total, 'Receipt tax:', receipt.tax, 'Receipt tax_rate:', receipt.tax_rate);
+  
   const [formData, setFormData] = useState<Partial<Receipt>>({ 
     document_type: 'Receipt',
     publish_target: 'Expense',
@@ -69,6 +73,10 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     // Override transaction_date with properly formatted version for HTML date input
     transaction_date: formatDateForInput(receipt.transaction_date)
   });
+  
+  // Debug: Log formData after initialization
+  console.log('formData initialized:', formData);
+  console.log('formData total:', formData.total, 'formData tax:', formData.tax, 'formData tax_rate:', formData.tax_rate);
   
   const [expenseAccounts, setExpenseAccounts] = useState<QuickBooksAccount[]>([]);
   const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>([]);
@@ -185,6 +193,9 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
         ? formData.transaction_date 
         : undefined,
     };
+    
+    console.log('handleSave - updatedData being sent to API:', updatedData);
+    console.log('handleSave - updatedData.total:', updatedData.total, 'updatedData.tax:', updatedData.tax);
     
     onUpdate(updatedData as Receipt);
     onBack();
