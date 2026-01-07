@@ -263,8 +263,10 @@ const App: React.FC = () => {
                       style={{
                         fontSize: 'var(--font-size-body)',
                         fontWeight: 'var(--font-weight-semibold)',
-                        color: 'var(--primary)',
-                        backgroundColor: 'var(--background-muted)',
+                        color: 'white',
+                        backgroundColor: '#00C020',
+                        width: '150px',
+                        height: '206px',
                         padding: '6px 12px',
                         borderRadius: 'var(--radius-md)',
                         border: 'none',
@@ -364,17 +366,6 @@ const App: React.FC = () => {
             flexDirection: 'column',
             gap: '24px',
           }}>
-             <div>
-                <h1 style={{
-                  fontSize: 'var(--font-size-h1)',
-                  fontWeight: 'var(--font-weight-bold)',
-                  color: 'var(--text-primary)',
-                  fontFamily: 'var(--font-heading)',
-                }}>
-                  Costs Inbox
-                </h1>
-             </div>
-
              <div style={{
                borderBottom: '1px solid var(--border-default)',
                marginBottom: '24px',

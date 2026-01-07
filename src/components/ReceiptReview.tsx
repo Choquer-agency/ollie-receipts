@@ -357,7 +357,8 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
             </button>
             <h2 style={{
               fontSize: 'var(--font-size-body)',
-              fontWeight: 'var(--font-weight-bold)',
+              fontWeight: 'var(--font-weight-semibold)',
+              fontFamily: 'var(--font-body)',
               color: 'var(--text-primary)',
               margin: 0,
             }}>
@@ -490,13 +491,14 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
             {/* Item Details Section */}
             <div>
               <h3 style={{
-                fontSize: '0.9rem',
+                fontSize: '1.35rem',
                 fontWeight: 'var(--font-weight-bold)',
                 color: 'var(--text-tertiary)',
                 fontFamily: 'var(--font-heading)',
                 marginBottom: '16px',
                 borderBottom: '1px solid var(--border-default)',
                 paddingBottom: '4px',
+                letterSpacing: '0',
               }}>
                 Item Details
               </h3>
@@ -610,13 +612,14 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
             {/* Amount Section */}
             <div>
               <h3 style={{
-                fontSize: '0.9rem',
+                fontSize: '1.35rem',
                 fontWeight: 'var(--font-weight-bold)',
                 color: 'var(--text-tertiary)',
                 fontFamily: 'var(--font-heading)',
                 marginBottom: '16px',
                 borderBottom: '1px solid var(--border-default)',
                 paddingBottom: '4px',
+                letterSpacing: '0',
               }}>
                 Amount
               </h3>
@@ -659,7 +662,7 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
               </InputGroup>
 
               <div style={{
-                backgroundColor: 'var(--background-muted)',
+                backgroundColor: 'var(--background)',
                 padding: '20px',
                 borderRadius: 'var(--radius-xl)',
                 border: '1px solid var(--border-default)',
@@ -678,9 +681,10 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                    <h4 style={{
                      fontSize: 'var(--font-size-small)',
                      fontWeight: 'var(--font-weight-bold)',
+                     fontFamily: 'var(--font-body)',
                      color: 'var(--primary)',
                      textTransform: 'uppercase',
-                     letterSpacing: '0.1em',
+                     letterSpacing: '0',
                    }}>Tax Breakdown</h4>
                 </div>
 
@@ -796,32 +800,35 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
             {/* Payment Section */}
             <div>
               <h3 style={{
-                fontSize: '0.9rem',
+                fontSize: '1.35rem',
                 fontWeight: 'var(--font-weight-bold)',
                 color: 'var(--text-tertiary)',
                 fontFamily: 'var(--font-heading)',
                 marginBottom: '16px',
                 borderBottom: '1px solid var(--border-default)',
                 paddingBottom: '4px',
+                letterSpacing: '0',
               }}>
                 Payment
               </h3>
               
               <InputGroup label="Paid">
-                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button 
                         onClick={() => handleTogglePaid(true)}
                         style={{
-                          padding: '6px 16px',
+                          flex: 1,
+                          padding: 'var(--spacing-2)',
                           borderRadius: 'var(--radius-md)',
                           fontSize: 'var(--font-size-small)',
                           fontWeight: 'var(--font-weight-semibold)',
                           border: '1px solid',
-                          borderColor: formData.is_paid ? 'var(--primary)' : 'var(--border-strong)',
+                          borderColor: formData.is_paid ? 'var(--primary)' : 'var(--border-default)',
                           backgroundColor: formData.is_paid ? 'var(--primary)' : 'var(--background-elevated)',
-                          color: formData.is_paid ? 'white' : 'var(--text-primary)',
+                          color: formData.is_paid ? 'white' : 'var(--text-secondary)',
                           cursor: 'pointer',
                           transition: 'var(--transition-default)',
+                          boxShadow: formData.is_paid ? 'var(--shadow-raised)' : 'none',
                         }}
                     >
                         Yes
@@ -829,16 +836,18 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                     <button 
                         onClick={() => handleTogglePaid(false)}
                         style={{
-                          padding: '6px 16px',
+                          flex: 1,
+                          padding: 'var(--spacing-2)',
                           borderRadius: 'var(--radius-md)',
                           fontSize: 'var(--font-size-small)',
                           fontWeight: 'var(--font-weight-semibold)',
                           border: '1px solid',
-                          borderColor: !formData.is_paid ? 'var(--primary)' : 'var(--border-strong)',
+                          borderColor: !formData.is_paid ? 'var(--primary)' : 'var(--border-default)',
                           backgroundColor: !formData.is_paid ? 'var(--primary)' : 'var(--background-elevated)',
-                          color: !formData.is_paid ? 'white' : 'var(--text-primary)',
+                          color: !formData.is_paid ? 'white' : 'var(--text-secondary)',
                           cursor: 'pointer',
                           transition: 'var(--transition-default)',
+                          boxShadow: !formData.is_paid ? 'var(--shadow-raised)' : 'none',
                         }}
                     >
                         No

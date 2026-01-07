@@ -65,36 +65,25 @@ const UserMenu: React.FC = () => {
           e.currentTarget.style.backgroundColor = 'var(--background-muted)';
         }}
       >
-        {/* Avatar */}
-        {user.imageUrl ? (
+        {/* Avatar - SVG Icon */}
+        <div
+          style={{
+            width: '32px',
+            height: '32px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
           <img
-            src={user.imageUrl}
-            alt={getDisplayName()}
+            src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgZmlsbD0iIzAwMDAwMCIgdmlld0JveD0iMCAwIDI1NiAyNTYiPjxwYXRoIGQ9Ik0yMzAuOTIsMjEyYy0xNS4yMy0yNi4zMy0zOC43LTQ1LjIxLTY2LjA5LTU0LjE2YTcyLDcyLDAsMSwwLTczLjY2LDBDNjMuNzgsMTY2Ljc4LDQwLjMxLDE4NS42NiwyNS4wOCwyMTJhOCw4LDAsMSwwLDEzLjg1LDhjMTguODQtMzIuNTYsNTIuMTQtNTIsODkuMDctNTJzNzAuMjMsMTkuNDQsODkuMDcsNTJhOCw4LDAsMSwwLDEzLjg1LThaTTcyLDk2YTU2LDU2LDAsMSwxLDU2LDU2QTU2LjA2LDU2LjA2LDAsMCwxLDcyLDk2WiI+PC9wYXRoPjwvc3ZnPg=="
+            alt="User"
             style={{
               width: '32px',
               height: '32px',
-              borderRadius: '50%',
-              objectFit: 'cover',
             }}
           />
-        ) : (
-          <div
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              backgroundColor: 'var(--primary)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'white',
-              fontSize: 'var(--font-size-small)',
-              fontWeight: 'var(--font-weight-semibold)',
-            }}
-          >
-            {getInitials()}
-          </div>
-        )}
+        </div>
 
         {/* User Name */}
         <span
@@ -106,6 +95,7 @@ const UserMenu: React.FC = () => {
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
+            backgroundColor: 'transparent',
           }}
         >
           {getDisplayName()}
@@ -151,6 +141,7 @@ const UserMenu: React.FC = () => {
                 fontWeight: 'var(--font-weight-semibold)',
                 color: 'var(--text-primary)',
                 marginBottom: '2px',
+                backgroundColor: 'transparent',
               }}
             >
               {getDisplayName()}

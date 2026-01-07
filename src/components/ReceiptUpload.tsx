@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { Upload, FileText, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Upload, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Receipt, ReceiptStatus } from '../types';
 import { parseReceiptImage } from '../services/geminiService';
 import { receiptApi } from '../services/apiService';
@@ -281,18 +281,10 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
               <div style={{ display: 'flex', marginLeft: '-8px', marginBottom: 'var(--spacing-4)' }}>
                 <div style={{ 
                   ...iconContainerBaseStyles, 
-                  backgroundColor: 'var(--background-muted)',
+                  backgroundColor: '#E8F5E9',
                   color: 'var(--primary)',
                 }}>
                   <Upload size={24} />
-                </div>
-                <div style={{ 
-                  ...iconContainerBaseStyles,
-                  backgroundColor: 'var(--status-success-bg)',
-                  color: 'var(--status-success-text)',
-                  transform: 'translateY(4px)',
-                }}>
-                  <FileText size={24} />
                 </div>
               </div>
               <p style={{
