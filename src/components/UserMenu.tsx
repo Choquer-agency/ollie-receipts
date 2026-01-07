@@ -26,12 +26,6 @@ const UserMenu: React.FC = () => {
 
   if (!user) return null;
 
-  const getInitials = () => {
-    const firstName = user.firstName || '';
-    const lastName = user.lastName || '';
-    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || user.primaryEmailAddress?.emailAddress.charAt(0).toUpperCase() || 'U';
-  };
-
   const getDisplayName = () => {
     if (user.firstName && user.lastName) {
       return `${user.firstName} ${user.lastName}`;
