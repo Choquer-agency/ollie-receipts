@@ -75,12 +75,6 @@ const App: React.FC = () => {
 
   const handleUpdateReceipt = async (updated: Receipt) => {
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/df6db7d3-a15f-4506-8cab-965bf7d93b29',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:76',message:'handleUpdateReceipt - receipt before transform',data:{updated},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
-      
-      console.log('handleUpdateReceipt - sending to API:', updated);
-      
       // Transform snake_case to camelCase for API
       // Convert null to undefined (Zod's .optional() accepts undefined but not null)
       const apiData: any = {
@@ -104,22 +98,9 @@ const App: React.FC = () => {
         qbAccountId: updated.qb_account_id ?? undefined,
       };
       
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/df6db7d3-a15f-4506-8cab-965bf7d93b29',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:107',message:'handleUpdateReceipt - apiData after transform',data:{apiData,nullCount:Object.values(apiData).filter(v=>v===null).length,undefinedCount:Object.values(apiData).filter(v=>v===undefined).length},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
-      
       await receiptApi.update(updated.id, apiData);
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/df6db7d3-a15f-4506-8cab-965bf7d93b29',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:112',message:'handleUpdateReceipt - update successful',data:{receiptId:updated.id},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
-      
       setReceipts(prev => prev.map(r => r.id === updated.id ? updated : r));
     } catch (error: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/df6db7d3-a15f-4506-8cab-965bf7d93b29',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:119',message:'handleUpdateReceipt - error caught',data:{errorMessage:error.message,responseData:error.response?.data,responseStatus:error.response?.status,validationDetails:error.response?.data?.details},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
-      
       console.error('Failed to update receipt:', error);
       console.error('Error response:', error.response?.data);
       console.error('Error status:', error.response?.status);

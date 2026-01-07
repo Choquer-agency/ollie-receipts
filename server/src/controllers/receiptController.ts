@@ -179,7 +179,13 @@ export const createReceipt = async (req: AuthenticatedRequest, res: Response) =>
       return res.status(400).json({ error: 'Invalid request data', details: error.errors });
     }
     console.error('Create receipt error:', error);
-    res.status(500).json({ error: 'Failed to create receipt', details: error instanceof Error ? error.message : 'Unknown error' });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const detailedError = {
+      error: 'Failed to create receipt',
+      details: errorMessage,
+      hint: errorMessage.includes('column') ? 'Database migration may be required. Run server/migrate.sh' : undefined
+    };
+    res.status(500).json(detailedError);
   }
 };
 
@@ -320,7 +326,13 @@ export const checkDuplicates = async (req: AuthenticatedRequest, res: Response) 
       return res.status(400).json({ error: 'Invalid request data', details: error.errors });
     }
     console.error('Check duplicates error:', error);
-    res.status(500).json({ error: 'Failed to check duplicates' });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const detailedError = {
+      error: 'Failed to check duplicates',
+      details: errorMessage,
+      hint: errorMessage.includes('column') ? 'Database migration may be required. Run server/migrate.sh' : undefined
+    };
+    res.status(500).json(detailedError);
   }
 };
 

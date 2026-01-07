@@ -113,14 +113,29 @@ ollie-receipts/
 │       ├── middleware/     # Auth and other middleware
 │       ├── db/            # Database connection and schema
 │       └── config/        # Configuration files
-└── design-system/          # Design tokens and guidelines
+├── design-system/          # Design tokens and guidelines
+└── docs/                   # Documentation
+    ├── setup/             # Setup and deployment guides
+    ├── features/          # Feature documentation
+    ├── implementation/    # Implementation guides
+    └── archive/          # Historical documentation
 ```
 
 ## Deployment
 
-See deployment guides:
-- Railway: Check Railway dashboard after connecting GitHub
-- Environment variables are documented in `ENV_SETUP.md`
+See deployment guides in `docs/setup/`:
+- `RAILWAY_DEPLOY.md` - Railway deployment instructions
+- `ENV_SETUP.md` - Environment variables configuration
+- `GITHUB_SETUP.md` - GitHub repository setup
+- `PRODUCTION_CLERK_SETUP.md` - Production authentication setup
+
+## Documentation
+
+All project documentation is organized in the `docs/` folder:
+- **Setup guides** (`docs/setup/`) - Installation, deployment, and configuration
+- **Features** (`docs/features/`) - Feature documentation and guides  
+- **Implementation** (`docs/implementation/`) - Technical implementation details
+- **Archive** (`docs/archive/`) - Historical documentation and completed work
 
 ## License
 

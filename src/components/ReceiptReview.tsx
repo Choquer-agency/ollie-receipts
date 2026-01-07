@@ -242,9 +242,6 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
       qbAccountId: formData.qb_account_id,
     };
     
-    console.log('handleSave - updatedData being sent to API:', updatedData);
-    console.log('handleSave - updatedData.total:', updatedData.total, 'updatedData.tax:', updatedData.tax);
-    
     // Create a receipt object with both camelCase (for display) and the original receipt data
     const receiptForUpdate = {
       ...receipt,
