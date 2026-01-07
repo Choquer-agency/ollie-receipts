@@ -63,13 +63,15 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
   console.log('Receipt total:', receipt.total, 'Receipt tax:', receipt.tax, 'Receipt tax_rate:', receipt.tax_rate);
   
   const [formData, setFormData] = useState<Partial<Receipt>>({ 
-    document_type: 'Receipt',
-    publish_target: 'Expense',
-    is_paid: true,
-    currency: 'CAD',
-    tax_treatment: 'Inclusive',
-    tax_rate: (receipt.tax && receipt.tax > 0) ? -1 : 0,
+    // Start with receipt data
     ...receipt,
+    // Override/set defaults only for fields that are null/undefined
+    document_type: receipt.document_type || 'Receipt',
+    publish_target: receipt.publish_target || 'Expense',
+    is_paid: receipt.is_paid !== undefined ? receipt.is_paid : true,
+    currency: receipt.currency || 'CAD',
+    tax_treatment: receipt.tax_treatment || 'Inclusive',
+    tax_rate: (receipt.tax && receipt.tax > 0) ? -1 : 0,
     // Override transaction_date with properly formatted version for HTML date input
     transaction_date: formatDateForInput(receipt.transaction_date)
   });

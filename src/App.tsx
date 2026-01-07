@@ -75,10 +75,13 @@ const App: React.FC = () => {
 
   const handleUpdateReceipt = async (updated: Receipt) => {
     try {
+      console.log('handleUpdateReceipt - sending to API:', updated);
       await receiptApi.update(updated.id, updated);
       setReceipts(prev => prev.map(r => r.id === updated.id ? updated : r));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update receipt:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
     }
   };
 
