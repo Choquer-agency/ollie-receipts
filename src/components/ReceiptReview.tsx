@@ -83,12 +83,14 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
   }, []);
 
   const getTaxCalculationText = useCallback(() => {
-    const total = formData.total || 0;
-    const rate = formData.tax_rate || 0;
-    const tax = formData.tax || 0;
+    // Safely convert to numbers, default to 0 if invalid
+    const total = typeof formData.total === 'number' && !isNaN(formData.total) ? formData.total : 0;
+    const rate = typeof formData.tax_rate === 'number' && !isNaN(formData.tax_rate) ? formData.tax_rate : 0;
+    const tax = typeof formData.tax === 'number' && !isNaN(formData.tax) ? formData.tax : 0;
     const treatment = formData.tax_treatment || 'Inclusive';
     
-    if (rate <= 0 || rate === -1) return null;
+    // Don't show calculation if rate is not set or total is 0
+    if (rate <= 0 || rate === -1 || total === 0) return null;
     
     const ratePercent = (rate * 100).toFixed(rate * 100 === Math.floor(rate * 100) ? 0 : 1);
     const taxRateLabel = TAX_RATES.find(r => r.value === rate)?.label.split('(')[0].trim() || 'Tax';
@@ -107,7 +109,8 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     let newValue: any = value;
     
     if (name === 'total' || name === 'tax' || name === 'tax_rate') {
-      newValue = parseFloat(value);
+      const parsed = parseFloat(value);
+      newValue = isNaN(parsed) ? undefined : parsed;
     }
 
     setFormData(prev => {
@@ -117,14 +120,14 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
         updated.tax_rate = -1;
       }
 
-      if (name === 'tax_rate' && newValue !== -1) {
+      if (name === 'tax_rate' && newValue !== -1 && newValue !== undefined) {
         const total = prev.total || 0;
         const rate = newValue;
         const treatment = prev.tax_treatment || 'Inclusive';
         updated.tax = parseFloat(calculateTax(total, rate, treatment).toFixed(2));
       }
 
-      if (name === 'total' && prev.tax_rate !== undefined && prev.tax_rate !== -1) {
+      if (name === 'total' && prev.tax_rate !== undefined && prev.tax_rate !== -1 && newValue !== undefined) {
         const total = newValue;
         const rate = prev.tax_rate;
         const treatment = prev.tax_treatment || 'Inclusive';
