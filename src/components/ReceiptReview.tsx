@@ -89,8 +89,8 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     const tax = typeof formData.tax === 'number' && !isNaN(formData.tax) ? formData.tax : 0;
     const treatment = formData.tax_treatment || 'Inclusive';
     
-    // Don't show calculation if rate is not set or total is 0
-    if (rate <= 0 || rate === -1 || total === 0) return null;
+    // Don't show calculation if rate is not set, is manual, or if values are missing
+    if (rate === -1 || rate === 0 || total === 0 || tax === 0) return null;
     
     const ratePercent = (rate * 100).toFixed(rate * 100 === Math.floor(rate * 100) ? 0 : 1);
     const taxRateLabel = TAX_RATES.find(r => r.value === rate)?.label.split('(')[0].trim() || 'Tax';
