@@ -82,6 +82,26 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     }
   }, []);
 
+  const getTaxCalculationText = useCallback(() => {
+    const total = formData.total || 0;
+    const rate = formData.tax_rate || 0;
+    const tax = formData.tax || 0;
+    const treatment = formData.tax_treatment || 'Inclusive';
+    
+    if (rate <= 0 || rate === -1) return null;
+    
+    const ratePercent = (rate * 100).toFixed(rate * 100 === Math.floor(rate * 100) ? 0 : 1);
+    const taxRateLabel = TAX_RATES.find(r => r.value === rate)?.label.split('(')[0].trim() || 'Tax';
+    
+    if (treatment === 'Inclusive') {
+      const subtotal = total - tax;
+      return `$${total.toFixed(2)} includes $${tax.toFixed(2)} ${taxRateLabel} (${ratePercent}%) → Subtotal: $${subtotal.toFixed(2)}`;
+    } else {
+      const newTotal = total + tax;
+      return `$${total.toFixed(2)} + $${tax.toFixed(2)} ${taxRateLabel} (${ratePercent}%) → Total: $${newTotal.toFixed(2)}`;
+    }
+  }, [formData.total, formData.tax_rate, formData.tax, formData.tax_treatment]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     let newValue: any = value;
@@ -383,12 +403,6 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                  />
               </InputGroup>
 
-              <InputGroup label="Document owner">
-                 <select style={inputBaseStyle}>
-                    <option value="current">Alex Thompson</option>
-                 </select>
-              </InputGroup>
-
               <InputGroup label="Type">
                  <select 
                     name="document_type"
@@ -541,13 +555,13 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                 marginBottom: '16px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '16px',
+                gap: '12px',
               }}>
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  marginBottom: '8px',
+                  marginBottom: '4px',
                 }}>
                    <Calculator size={14} style={{ color: 'var(--primary)' }} />
                    <h4 style={{
@@ -559,13 +573,13 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                    }}>Tax Breakdown</h4>
                 </div>
 
-                <InputGroup label="Tax Included?">
+                <InputGroup label="Does the total already include tax?">
                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <button 
                          onClick={() => handleChange({ target: { name: 'tax_treatment', value: 'Inclusive' }} as any)}
                          style={{
                            flex: 1,
-                           padding: '6px',
+                           padding: 'var(--spacing-2)',
                            borderRadius: 'var(--radius-md)',
                            fontSize: 'var(--font-size-small)',
                            fontWeight: 'var(--font-weight-semibold)',
@@ -584,7 +598,7 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                          onClick={() => handleChange({ target: { name: 'tax_treatment', value: 'Exclusive' }} as any)}
                          style={{
                            flex: 1,
-                           padding: '6px',
+                           padding: 'var(--spacing-2)',
                            borderRadius: 'var(--radius-md)',
                            fontSize: 'var(--font-size-small)',
                            fontWeight: 'var(--font-weight-semibold)',
@@ -651,16 +665,16 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                           fontSize: 'var(--font-size-body)',
                         }}>$</span>
                       </div>
-                      {formData.tax_rate !== -1 && (
+                      {formData.tax_rate !== -1 && getTaxCalculationText() && (
                         <p style={{
                           fontSize: 'var(--font-size-tiny)',
                           color: 'var(--text-tertiary)',
-                          marginTop: '4px',
+                          marginTop: '6px',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '4px',
                         }}>
-                           <Info size={10} /> Auto-calculated based on {formData.tax_rate && formData.tax_rate * 100}% rate.
+                           <Info size={10} /> {getTaxCalculationText()}
                         </p>
                       )}
                    </div>

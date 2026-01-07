@@ -24,12 +24,14 @@ export const parseReceiptImage = async (base64Data: string, mimeType: string): P
           },
           {
             text: `Analyze this ${mimeType.includes('pdf') ? 'document' : 'receipt image'} and extract:
-            - Vendor Name
-            - Transaction Date (YYYY-MM-DD format)
-            - Total Amount
+            - Vendor Name (business name)
+            - Transaction Date (REQUIRED - look for payment date, invoice date, or transaction date. Convert to YYYY-MM-DD format. Common formats include MM/DD/YYYY, DD/MM/YYYY, Month DD YYYY. If multiple dates exist, prefer the payment/transaction date over issue dates.)
+            - Total Amount (the final amount paid)
             - Tax Amount (if visible, otherwise 0)
-            - Currency Code (e.g., USD, CAD, EUR)
+            - Currency Code (e.g., USD, CAD, EUR - default to CAD if unclear)
             - Suggested Expense Category (e.g., "Meals & Entertainment", "Office Supplies", "Travel", "Software Subscription")
+
+            IMPORTANT: Transaction date is mandatory. Search carefully for any date on the receipt.
 
             Return the data in strict JSON format.`
           }
@@ -47,7 +49,7 @@ export const parseReceiptImage = async (base64Data: string, mimeType: string): P
             currency: { type: Type.STRING },
             suggested_category: { type: Type.STRING }
           },
-          required: ["vendor_name", "total", "suggested_category"]
+          required: ["vendor_name", "transaction_date", "total", "suggested_category"]
         }
       }
     });
