@@ -18,26 +18,12 @@ import { sql } from '../db/index.js';
 import { z } from 'zod';
 
 /**
- * Helper function to get internal user ID from Clerk user ID
- */
-async function getInternalUserId(clerkUserId: string): Promise<string> {
-  const users = await sql`
-    SELECT id FROM users WHERE clerk_user_id = ${clerkUserId}
-  `;
-  
-  if (users.length === 0) {
-    throw new Error('User not found');
-  }
-  
-  return users[0].id;
-}
-
-/**
  * Generate OAuth authorization URL
  */
 export const getAuthUrl = async (req: AuthenticatedRequest, res: Response) => {
   try {
     // Pass user ID to encode in state parameter
+    // Note: req.userId is already the internal database UUID
     const authUrl = getAuthorizationUrl(req.userId);
     res.json({ authUrl });
   } catch (error) {
@@ -206,8 +192,8 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
  */
 export const getConnectionStatus = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const internalUserId = await getInternalUserId(req.userId!);
-    const connection = await getConnection(internalUserId);
+    // req.userId is already the internal database ID
+    const connection = await getConnection(req.userId!);
     
     if (!connection) {
       return res.json({
@@ -232,8 +218,7 @@ export const getConnectionStatus = async (req: AuthenticatedRequest, res: Respon
  */
 export const disconnect = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const internalUserId = await getInternalUserId(req.userId!);
-    const success = await revokeConnection(internalUserId);
+    const success = await revokeConnection(req.userId!);
     
     if (!success) {
       return res.status(404).json({ error: 'No connection found' });
@@ -251,8 +236,7 @@ export const disconnect = async (req: AuthenticatedRequest, res: Response) => {
  */
 export const getExpenseAccounts = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const internalUserId = await getInternalUserId(req.userId!);
-    const accounts = await fetchExpenseAccounts(internalUserId);
+    const accounts = await fetchExpenseAccounts(req.userId!);
     
     // Transform to match frontend format
     const formattedAccounts = accounts.map(account => ({
@@ -276,8 +260,7 @@ export const getExpenseAccounts = async (req: AuthenticatedRequest, res: Respons
  */
 export const getPaymentAccounts = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const internalUserId = await getInternalUserId(req.userId!);
-    const accounts = await fetchPaymentAccounts(internalUserId);
+    const accounts = await fetchPaymentAccounts(req.userId!);
     
     // Transform to match frontend format
     const formattedAccounts = accounts.map(account => ({
@@ -308,12 +291,11 @@ const publishReceiptSchema = z.object({
 export const publishReceipt = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const data = publishReceiptSchema.parse(req.body);
-    const internalUserId = await getInternalUserId(req.userId!);
     
     // Get receipt from database
     const receipts = await sql`
       SELECT * FROM receipts
-      WHERE id = ${data.receiptId} AND user_id = ${internalUserId}
+      WHERE id = ${data.receiptId} AND user_id = ${req.userId}
     `;
     
     if (receipts.length === 0) {
@@ -330,7 +312,7 @@ export const publishReceipt = async (req: AuthenticatedRequest, res: Response) =
     }
     
     // Publish to QuickBooks
-    const result = await publishReceiptToQuickBooks(internalUserId, {
+    const result = await publishReceiptToQuickBooks(req.userId!, {
       vendorName: receipt.vendor_name,
       transactionDate: receipt.transaction_date,
       total: parseFloat(receipt.total),
