@@ -2,7 +2,8 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Upload, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Receipt, ReceiptStatus } from '../types';
 import { parseReceiptImage } from '../services/geminiService';
-import { receiptApi } from '../services/apiService';
+import { receiptApi, setAuthToken } from '../services/apiService';
+import { useAuth } from '@clerk/clerk-react';
 import axios from 'axios';
 
 interface ReceiptUploadProps {
@@ -14,20 +15,44 @@ interface UploadStats {
   completed: number;
   duplicates: number;
   successful: number;
+  errors: number;
 }
 
 const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
+  const { getToken } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [stats, setStats] = useState<UploadStats>({ total: 0, completed: 0, duplicates: 0, successful: 0 });
+  const [stats, setStats] = useState<UploadStats>({ total: 0, completed: 0, duplicates: 0, successful: 0, errors: 0 });
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Helper to refresh auth token before API calls
+  const refreshAuthToken = async () => {
+    try {
+      const token = await getToken();
+      if (token) {
+        setAuthToken(token);
+      }
+      return token;
+    } catch (error) {
+      console.error('Failed to refresh auth token:', error);
+      return null;
+    }
+  };
 
   const processFiles = async (files: FileList | File[]) => {
     if (files.length === 0) return;
 
     setIsProcessing(true);
     const total = files.length;
-    setStats({ total, completed: 0, duplicates: 0, successful: 0 });
+    setStats({ total, completed: 0, duplicates: 0, successful: 0, errors: 0 });
+
+    // Refresh auth token before starting uploads
+    const token = await refreshAuthToken();
+    if (!token) {
+      console.error('Failed to get auth token');
+      setIsProcessing(false);
+      return;
+    }
 
     // Step 1: Check for filename duplicates
     const filesToCheck = Array.from(files).map(file => ({
@@ -143,6 +168,10 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
         }
       } catch (err) {
         console.error("File upload error", err);
+        setStats(prev => ({ 
+          ...prev, 
+          errors: prev.errors + 1 
+        }));
       } finally {
         setStats(prev => ({ ...prev, completed: prev.completed + 1 }));
       }
@@ -156,7 +185,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
     }
 
     setIsProcessing(false);
-    setTimeout(() => setStats({ total: 0, completed: 0, duplicates: 0, successful: 0 }), 5000);
+    setTimeout(() => setStats({ total: 0, completed: 0, duplicates: 0, successful: 0, errors: 0 }), 5000);
   };
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -403,6 +432,18 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
                    color: 'var(--text-secondary)',
                  }}>
                    <AlertCircle size={14} /> {stats.duplicates} {stats.duplicates === 1 ? 'receipt was a duplicate' : 'receipts were duplicates'}
+                 </div>
+               )}
+               {stats.errors > 0 && (
+                 <div style={{
+                   display: 'flex',
+                   alignItems: 'center',
+                   gap: 'var(--spacing-2)',
+                   fontSize: 'var(--font-size-small)',
+                   fontWeight: 'var(--font-weight-semibold)',
+                   color: 'var(--status-error-text)',
+                 }}>
+                   <AlertCircle size={14} /> {stats.errors} {stats.errors === 1 ? 'receipt failed to upload' : 'receipts failed to upload'}
                  </div>
                )}
              </div>

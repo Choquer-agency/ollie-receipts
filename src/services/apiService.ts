@@ -10,6 +10,13 @@ const api = axios.create({
   },
 });
 
+// Store token refresh callback
+let tokenRefreshCallback: (() => Promise<string | null>) | null = null;
+
+export const setTokenRefreshCallback = (callback: () => Promise<string | null>) => {
+  tokenRefreshCallback = callback;
+};
+
 // Add auth token to all requests
 export const setAuthToken = (token: string | null) => {
   if (token) {
@@ -18,6 +25,32 @@ export const setAuthToken = (token: string | null) => {
     delete api.defaults.headers.common['Authorization'];
   }
 };
+
+// Add response interceptor to handle 401 errors
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    
+    // If we get a 401 and haven't retried yet, try to refresh the token
+    if (error.response?.status === 401 && !originalRequest._retry && tokenRefreshCallback) {
+      originalRequest._retry = true;
+      
+      try {
+        const newToken = await tokenRefreshCallback();
+        if (newToken) {
+          setAuthToken(newToken);
+          originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+          return api(originalRequest);
+        }
+      } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError);
+      }
+    }
+    
+    return Promise.reject(error);
+  }
+);
 
 // Receipt endpoints
 export const receiptApi = {

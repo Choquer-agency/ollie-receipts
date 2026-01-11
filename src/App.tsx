@@ -8,7 +8,7 @@ import ReceiptReview from './components/ReceiptReview';
 import AuthModal from './components/AuthModal';
 import UserMenu from './components/UserMenu';
 import { CheckCircle2 } from 'lucide-react';
-import { receiptApi, setAuthToken } from './services/apiService';
+import { receiptApi, setAuthToken, setTokenRefreshCallback } from './services/apiService';
 
 const App: React.FC = () => {
   const { getToken, isLoaded, isSignedIn } = useAuth();
@@ -26,6 +26,19 @@ const App: React.FC = () => {
       setShowAuthModal(false);
     }
   }, [isLoaded, isSignedIn]);
+
+  // Set up token refresh callback for API service
+  useEffect(() => {
+    setTokenRefreshCallback(async () => {
+      try {
+        const token = await getToken();
+        return token;
+      } catch (error) {
+        console.error('Token refresh callback failed:', error);
+        return null;
+      }
+    });
+  }, [getToken]);
 
   useEffect(() => {
     const loadReceipts = async () => {
