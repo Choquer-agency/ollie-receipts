@@ -54,8 +54,23 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
     // Handle OAuth errors
     if (error) {
       console.error('OAuth error:', error);
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3331';
-      return res.redirect(`${frontendUrl}?qbo_error=true&error=${error}`);
+      // Send HTML that closes popup and notifies parent
+      return res.send(`
+        <html>
+          <head><title>QuickBooks Connection Error</title></head>
+          <body>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'qbo_error', error: '${error}' }, '*');
+                window.close();
+              } else {
+                window.location.href = '/?qbo_error=true&error=${error}';
+              }
+            </script>
+            <p>Connection failed. This window should close automatically...</p>
+          </body>
+        </html>
+      `);
     }
     
     if (!code || !realmId) {
@@ -68,8 +83,22 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
     const userId = req.auth?.userId;
     
     if (!userId) {
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3331';
-      return res.redirect(`${frontendUrl}?qbo_error=true&error=no_user`);
+      return res.send(`
+        <html>
+          <head><title>Authentication Required</title></head>
+          <body>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'qbo_error', error: 'no_user' }, '*');
+                window.close();
+              } else {
+                window.location.href = '/?qbo_error=true&error=no_user';
+              }
+            </script>
+            <p>Authentication required. This window should close automatically...</p>
+          </body>
+        </html>
+      `);
     }
     
     // Get internal user ID from Clerk user ID
@@ -78,8 +107,22 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
     `;
     
     if (users.length === 0) {
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3331';
-      return res.redirect(`${frontendUrl}?qbo_error=true&error=user_not_found`);
+      return res.send(`
+        <html>
+          <head><title>User Not Found</title></head>
+          <body>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'qbo_error', error: 'user_not_found' }, '*');
+                window.close();
+              } else {
+                window.location.href = '/?qbo_error=true&error=user_not_found';
+              }
+            </script>
+            <p>User not found. This window should close automatically...</p>
+          </body>
+        </html>
+      `);
     }
     
     const internalUserId = users[0].id;
@@ -95,27 +138,63 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
     );
     
     // Try to get and update company name
+    let companyName = '';
     try {
       const companyInfo = await getCompanyInfo(internalUserId);
+      companyName = companyInfo.CompanyName;
       
       await storeConnection(
         internalUserId,
         realmId as string,
         tokens,
-        companyInfo.CompanyName
+        companyName
       );
     } catch (error) {
       console.error('Error fetching company info:', error);
       // Continue even if we can't get company info
     }
     
-    // Redirect to frontend success page
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3331';
-    res.redirect(`${frontendUrl}?qbo_connected=true`);
+    console.log('✅ QuickBooks connected successfully for user:', internalUserId);
+    
+    // Send HTML that closes popup and notifies parent window
+    res.send(`
+      <html>
+        <head><title>QuickBooks Connected</title></head>
+        <body>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({ 
+                type: 'qbo_connected', 
+                success: true,
+                companyName: '${companyName}'
+              }, '*');
+              setTimeout(() => window.close(), 500);
+            } else {
+              window.location.href = '/?qbo_connected=true';
+            }
+          </script>
+          <p>✅ QuickBooks connected successfully! This window will close automatically...</p>
+        </body>
+      </html>
+    `);
   } catch (error) {
     console.error('OAuth callback error:', error);
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3331';
-    res.redirect(`${frontendUrl}?qbo_error=true`);
+    res.send(`
+      <html>
+        <head><title>Connection Error</title></head>
+        <body>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({ type: 'qbo_error', error: 'callback_failed' }, '*');
+              window.close();
+            } else {
+              window.location.href = '/?qbo_error=true';
+            }
+          </script>
+          <p>Connection failed. This window should close automatically...</p>
+        </body>
+      </html>
+    `);
   }
 };
 

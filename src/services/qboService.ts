@@ -27,26 +27,44 @@ export const connectToQuickBooks = async (): Promise<boolean> => {
       throw new Error('Failed to open OAuth popup. Please allow popups for this site.');
     }
     
-    // Poll for popup closure and check connection status
+    // Listen for message from popup window
     return new Promise((resolve) => {
-      const checkInterval = setInterval(async () => {
-        if (popup.closed) {
-          clearInterval(checkInterval);
-          
-          // Check if connection was successful
-          try {
-            const statusResponse = await api.get('/api/qbo/status');
-            resolve(statusResponse.data.connected);
-          } catch (error) {
-            console.error('Error checking connection status:', error);
+      const messageHandler = (event: MessageEvent) => {
+        // Verify message is from our popup
+        if (event.data && event.data.type) {
+          if (event.data.type === 'qbo_connected' && event.data.success) {
+            console.log('✅ QuickBooks connected!', event.data.companyName);
+            window.removeEventListener('message', messageHandler);
+            resolve(true);
+          } else if (event.data.type === 'qbo_error') {
+            console.error('❌ QuickBooks connection error:', event.data.error);
+            window.removeEventListener('message', messageHandler);
             resolve(false);
           }
+        }
+      };
+      
+      window.addEventListener('message', messageHandler);
+      
+      // Also poll for popup closure as fallback
+      const checkInterval = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(checkInterval);
+          window.removeEventListener('message', messageHandler);
+          
+          // Check connection status as fallback
+          checkQBOStatus().then(status => {
+            resolve(status.connected);
+          }).catch(() => {
+            resolve(false);
+          });
         }
       }, 500);
       
       // Timeout after 5 minutes
       setTimeout(() => {
         clearInterval(checkInterval);
+        window.removeEventListener('message', messageHandler);
         if (!popup.closed) {
           popup.close();
         }
