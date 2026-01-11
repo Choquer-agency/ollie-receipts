@@ -36,13 +36,27 @@ export interface TokenData {
  * Generate OAuth authorization URL
  */
 export function getAuthorizationUrl(): string {
+  // Validate config before creating OAuth client
+  if (!QB_CONFIG.clientId || !QB_CONFIG.clientSecret) {
+    console.error('❌ QuickBooks OAuth config is incomplete!');
+    console.error('Client ID:', QB_CONFIG.clientId ? '✓ Set' : '❌ MISSING');
+    console.error('Client Secret:', QB_CONFIG.clientSecret ? '✓ Set' : '❌ MISSING');
+    throw new Error('QuickBooks OAuth credentials are not configured');
+  }
+  
+  console.log('✓ Generating OAuth URL with Client ID:', QB_CONFIG.clientId.substring(0, 10) + '...');
+  
   const oauthClient = createOAuthClient();
   const state = generateState(); // Generate random state for CSRF protection
   
-  return oauthClient.authorizeUri({
+  const authUrl = oauthClient.authorizeUri({
     scope: QB_CONFIG.scopes,
     state,
   });
+  
+  console.log('✓ OAuth URL generated:', authUrl.substring(0, 100) + '...');
+  
+  return authUrl;
 }
 
 /**
