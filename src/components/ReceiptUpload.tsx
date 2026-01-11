@@ -77,7 +77,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
         if (duplicateFilenames.has(file.name)) {
           setStats(prev => ({ 
             ...prev, 
-            completed: prev.completed + 1,
             duplicates: prev.duplicates + 1,
           }));
           return;
@@ -431,7 +430,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
                    fontWeight: 'var(--font-weight-semibold)',
                    color: 'var(--text-secondary)',
                  }}>
-                   <AlertCircle size={14} /> {stats.duplicates} {stats.duplicates === 1 ? 'receipt was a duplicate' : 'receipts were duplicates'}
+                   <AlertCircle size={14} /> {stats.duplicates} duplicate {stats.duplicates === 1 ? 'receipt' : 'receipts'} skipped
                  </div>
                )}
                {stats.errors > 0 && (
