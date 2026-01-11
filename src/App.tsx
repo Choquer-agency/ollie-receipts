@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { Receipt, ReceiptStatus } from './types';
-import { connectToQuickBooks } from './services/qboService';
+import { connectToQuickBooks, checkQBOStatus } from './services/qboService';
 import ReceiptList from './components/ReceiptList';
 import ReceiptUpload from './components/ReceiptUpload';
 import ReceiptReview from './components/ReceiptReview';
@@ -59,6 +59,10 @@ const App: React.FC = () => {
             console.warn('API returned non-array data:', data);
             setReceipts([]);
           }
+          
+          // Check QuickBooks connection status
+          const qboStatus = await checkQBOStatus();
+          setIsQboConnected(qboStatus.connected);
         }
       } catch (error) {
         console.error('Failed to load receipts:', error);
@@ -270,31 +274,29 @@ const App: React.FC = () => {
                  </button>
                ) : (
                  <>
-                   {!isQboConnected ? (
-                     <button 
-                      onClick={handleConnectQBO}
-                      style={{
-                        fontSize: 'var(--font-size-body)',
-                        fontWeight: 'var(--font-weight-semibold)',
-                        color: 'white',
-                        backgroundColor: '#00C020',
-                        width: '150px',
-                        height: '206px',
-                        padding: '6px 12px',
-                        borderRadius: 'var(--radius-md)',
-                        border: 'none',
-                        cursor: 'pointer',
-                        transition: 'var(--transition-default)',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.opacity = '0.8';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.opacity = '1';
-                      }}
-                     >
-                       Connect QuickBooks
-                     </button>
+                  {!isQboConnected ? (
+                    <button 
+                     onClick={handleConnectQBO}
+                     style={{
+                       fontSize: 'var(--font-size-body)',
+                       fontWeight: 'var(--font-weight-semibold)',
+                       color: 'white',
+                       backgroundColor: '#00C020',
+                       padding: '8px 16px',
+                       borderRadius: 'var(--radius-md)',
+                       border: 'none',
+                       cursor: 'pointer',
+                       transition: 'var(--transition-default)',
+                     }}
+                     onMouseEnter={(e) => {
+                       e.currentTarget.style.opacity = '0.8';
+                     }}
+                     onMouseLeave={(e) => {
+                       e.currentTarget.style.opacity = '1';
+                     }}
+                    >
+                      Connect QuickBooks
+                    </button>
                    ) : (
                      <span style={{
                        display: 'flex',

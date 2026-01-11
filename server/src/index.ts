@@ -5,6 +5,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { clerkMiddleware } from '@clerk/express';
 import receiptRoutes from './routes/receipts.js';
+import qboRoutes from './routes/qbo.js';
+import { validateQBConfig } from './config/quickbooks.js';
+import { startQuickBooksTokenRefreshJob } from './jobs/qboTokenRefresh.js';
 
 dotenv.config();
 
@@ -33,6 +36,7 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use('/api/receipts', receiptRoutes);
+app.use('/api/qbo', qboRoutes);
 
 // Serve static files from frontend build in production
 if (process.env.NODE_ENV === 'production') {
@@ -62,5 +66,22 @@ app.listen(PORT, () => {
     console.log('Serving frontend from /dist');
   }
   console.log(`Accepting requests from: ${FRONTEND_URL}`);
+  
+  // Validate QuickBooks configuration
+  const qbConfig = validateQBConfig();
+  if (qbConfig.valid) {
+    console.log('✓ QuickBooks configuration loaded');
+    
+    // Start background token refresh job (Option 3: Hybrid approach)
+    if (process.env.QB_DISABLE_BACKGROUND_REFRESH !== 'true') {
+      startQuickBooksTokenRefreshJob();
+      console.log('✓ QuickBooks token refresh job started (keeps connections alive 100+ days)');
+    } else {
+      console.log('⚠ QuickBooks background refresh disabled by environment variable');
+    }
+  } else {
+    console.warn('⚠ QuickBooks configuration incomplete. Missing:', qbConfig.missing.join(', '));
+    console.warn('  QuickBooks integration will not work until configured.');
+  }
 });
 

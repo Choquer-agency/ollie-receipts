@@ -1,59 +1,142 @@
 import { QuickBooksAccount, PaymentAccount, Receipt } from "../types";
+import api from "./apiService";
 
-// Mock Data for Expense Categories (Chart of Accounts)
-const MOCK_EXPENSE_ACCOUNTS: QuickBooksAccount[] = [
-  { id: '6415', name: '6415 - Client meals and entertainment', type: 'Expense' },
-  { id: '6418', name: '6418 - Food', type: 'Expense' },
-  { id: '6000', name: '6000 - Advertising', type: 'Expense' },
-  { id: '6100', name: '6100 - Auto', type: 'Expense' },
-  { id: '6200', name: '6200 - Office Supplies', type: 'Expense' },
-  { id: '6300', name: '6300 - Professional Fees', type: 'Expense' },
-  { id: '6400', name: '6400 - Travel', type: 'Expense' },
-];
-
-// Mock Data for Payment Methods (Asset/Liability Accounts)
-const MOCK_PAYMENT_ACCOUNTS: PaymentAccount[] = [
-  { id: '1001', name: 'Chequing (1001)', type: 'Bank' },
-  { id: '1002', name: 'Amex Business CC (1002)', type: 'Credit Card' },
-  { id: '1003', name: 'Visa Infinite (1003)', type: 'Credit Card' },
-  { id: '1004', name: 'Petty Cash', type: 'Bank' },
-];
-
+/**
+ * Connect to QuickBooks via OAuth
+ * Opens a popup window for OAuth authentication
+ */
 export const connectToQuickBooks = async (): Promise<boolean> => {
-  // Simulate OAuth flow
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      console.log("Connected to QuickBooks Sandbox");
-      resolve(true);
-    }, 1500);
-  });
+  try {
+    // Get OAuth URL from backend
+    const response = await api.get('/api/qbo/auth-url');
+    const { authUrl } = response.data;
+    
+    // Open OAuth popup
+    const width = 600;
+    const height = 700;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
+    
+    const popup = window.open(
+      authUrl,
+      'QuickBooks OAuth',
+      `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
+    );
+    
+    if (!popup) {
+      throw new Error('Failed to open OAuth popup. Please allow popups for this site.');
+    }
+    
+    // Poll for popup closure and check connection status
+    return new Promise((resolve) => {
+      const checkInterval = setInterval(async () => {
+        if (popup.closed) {
+          clearInterval(checkInterval);
+          
+          // Check if connection was successful
+          try {
+            const statusResponse = await api.get('/api/qbo/status');
+            resolve(statusResponse.data.connected);
+          } catch (error) {
+            console.error('Error checking connection status:', error);
+            resolve(false);
+          }
+        }
+      }, 500);
+      
+      // Timeout after 5 minutes
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (!popup.closed) {
+          popup.close();
+        }
+        resolve(false);
+      }, 5 * 60 * 1000);
+    });
+  } catch (error) {
+    console.error('Error connecting to QuickBooks:', error);
+    throw error;
+  }
 };
 
+/**
+ * Check QuickBooks connection status
+ */
+export const checkQBOStatus = async (): Promise<{
+  connected: boolean;
+  companyName?: string;
+  connectedAt?: string;
+}> => {
+  try {
+    const response = await api.get('/api/qbo/status');
+    return response.data;
+  } catch (error) {
+    console.error('Error checking QBO status:', error);
+    return { connected: false };
+  }
+};
+
+/**
+ * Disconnect from QuickBooks
+ */
+export const disconnectQBO = async (): Promise<boolean> => {
+  try {
+    await api.delete('/api/qbo/disconnect');
+    return true;
+  } catch (error) {
+    console.error('Error disconnecting from QuickBooks:', error);
+    return false;
+  }
+};
+
+/**
+ * Fetch expense accounts (Chart of Accounts)
+ */
 export const fetchAccounts = async (): Promise<QuickBooksAccount[]> => {
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(MOCK_EXPENSE_ACCOUNTS), 600);
-  });
+  try {
+    const response = await api.get('/api/qbo/accounts');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching accounts:', error);
+    throw error;
+  }
 };
 
+/**
+ * Fetch payment accounts (Bank and Credit Card accounts)
+ */
 export const fetchPaymentAccounts = async (): Promise<PaymentAccount[]> => {
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(MOCK_PAYMENT_ACCOUNTS), 600);
-  });
+  try {
+    const response = await api.get('/api/qbo/payment-accounts');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching payment accounts:', error);
+    throw error;
+  }
 };
 
-export const publishReceipt = async (receipt: Receipt, accountId: string): Promise<string> => {
-  // Simulate API call to create Expense/Bill in QBO
-  console.log(`Publishing receipt ${receipt.id}`);
-  console.log(`  Target: ${receipt.publish_target || 'Expense'}`);
-  console.log(`  Category Account: ${accountId}`);
-  console.log(`  Payment Account: ${receipt.payment_account_id}`);
-  
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(`txn_${Math.floor(Math.random() * 100000)}`);
-    }, 2000);
-  });
+/**
+ * Publish receipt to QuickBooks
+ */
+export const publishReceipt = async (
+  receipt: Receipt,
+  accountId: string
+): Promise<string> => {
+  try {
+    const response = await api.post('/api/qbo/publish', {
+      receiptId: receipt.id,
+      expenseAccountId: accountId,
+      paymentAccountId: receipt.payment_account_id,
+    });
+    
+    return response.data.transactionId;
+  } catch (error) {
+    console.error('Error publishing receipt:', error);
+    throw error;
+  }
 };
+
+
 
 
 

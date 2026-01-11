@@ -12,3 +12,4 @@ CREATE INDEX IF NOT EXISTS idx_receipts_filename ON receipts(user_id, original_f
 
 
 
+

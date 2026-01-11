@@ -18,6 +18,12 @@ PORT=4000
 NODE_ENV=development
 FRONTEND_URL=http://localhost:3331
 
+# QuickBooks OAuth (see QUICKBOOKS_SETUP.md for detailed setup)
+INTUIT_CLIENT_ID=your_intuit_client_id
+INTUIT_CLIENT_SECRET=your_intuit_client_secret
+INTUIT_REDIRECT_URI=http://localhost:4000/api/qbo/callback
+INTUIT_ENVIRONMENT=sandbox
+
 ## Setup Instructions
 
 ### 1. Clerk (Already have keys)
@@ -47,11 +53,30 @@ You already have:
 ### 4. Gemini API
 You already have this key - copy it to both frontend and backend .env files
 
+### 5. QuickBooks OAuth (Optional)
+For QuickBooks integration, see the detailed setup guide in `QUICKBOOKS_SETUP.md`:
+
+1. Go to https://developer.intuit.com
+2. Create a new app or use an existing one
+3. Configure OAuth redirect URI: `http://localhost:4000/api/qbo/callback`
+4. Copy Client ID and Client Secret
+5. Add to `server/.env`:
+   ```
+   INTUIT_CLIENT_ID=your_client_id
+   INTUIT_CLIENT_SECRET=your_client_secret
+   INTUIT_REDIRECT_URI=http://localhost:4000/api/qbo/callback
+   INTUIT_ENVIRONMENT=sandbox
+   ```
+
+**Note**: QuickBooks integration is optional. The app will work without it, but the "Connect QuickBooks" button won't function until configured.
+
 ## For Production (Railway)
 Set these same environment variables in Railway dashboard, but update:
 - VITE_API_URL=https://your-backend.railway.app
 - FRONTEND_URL=https://your-frontend.railway.app
 - NODE_ENV=production
+- INTUIT_REDIRECT_URI=https://your-backend.railway.app/api/qbo/callback
+- INTUIT_ENVIRONMENT=production (only after app is approved by Intuit)
 
 
 

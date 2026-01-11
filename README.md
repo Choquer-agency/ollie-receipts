@@ -64,6 +64,12 @@ GEMINI_API_KEY=your_gemini_api_key
 PORT=4000
 NODE_ENV=development
 FRONTEND_URL=http://localhost:3331
+
+# QuickBooks OAuth (optional - see QUICKBOOKS_SETUP.md)
+INTUIT_CLIENT_ID=your_client_id
+INTUIT_CLIENT_SECRET=your_client_secret
+INTUIT_REDIRECT_URI=http://localhost:4000/api/qbo/callback
+INTUIT_ENVIRONMENT=sandbox
 ```
 
 5. Set up Neon database:
@@ -94,7 +100,8 @@ The app will be available at http://localhost:3331
 - 🤖 AI-powered OCR with Google Gemini
 - ☁️ Cloud storage with Cloudflare R2
 - 📊 Receipt categorization and management
-- 💼 QuickBooks integration (coming soon)
+- 💼 QuickBooks OAuth integration with automatic token refresh
+- 📤 Publish receipts to QuickBooks as Purchase/Bill transactions
 - 🎨 Modern, responsive UI
 
 ## Project Structure
@@ -128,6 +135,7 @@ See deployment guides in `docs/setup/`:
 - `ENV_SETUP.md` - Environment variables configuration
 - `GITHUB_SETUP.md` - GitHub repository setup
 - `PRODUCTION_CLERK_SETUP.md` - Production authentication setup
+- `QUICKBOOKS_SETUP.md` - QuickBooks OAuth integration setup
 
 ## Documentation
 

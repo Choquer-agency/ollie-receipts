@@ -46,17 +46,17 @@ const UserMenu: React.FC = () => {
           alignItems: 'center',
           gap: '8px',
           padding: '6px 12px 6px 6px',
-          backgroundColor: 'var(--background-muted)',
+          backgroundColor: 'transparent',
           border: '1px solid var(--border-strong)',
           borderRadius: 'var(--radius-md)',
           cursor: 'pointer',
           transition: 'var(--transition-default)',
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = 'var(--border-strong)';
+          e.currentTarget.style.backgroundColor = 'var(--background-muted)';
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = 'var(--background-muted)';
+          e.currentTarget.style.backgroundColor = 'transparent';
         }}
       >
         {/* Avatar - SVG Icon */}
