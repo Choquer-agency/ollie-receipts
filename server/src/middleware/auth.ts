@@ -5,6 +5,10 @@ import { sql } from '../db/index.js';
 export interface AuthenticatedRequest extends Request {
   userId?: string;
   clerkUserId?: string;
+  auth?: {
+    userId?: string;
+    sessionId?: string;
+  };
 }
 
 export const requireAuth = async (
