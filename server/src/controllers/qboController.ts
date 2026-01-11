@@ -6,6 +6,7 @@ import {
   storeConnection,
   getConnection,
   revokeConnection,
+  extractUserIdFromState,
 } from '../services/qboAuthService.js';
 import {
   fetchExpenseAccounts,
@@ -36,7 +37,8 @@ async function getInternalUserId(clerkUserId: string): Promise<string> {
  */
 export const getAuthUrl = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const authUrl = getAuthorizationUrl();
+    // Pass user ID to encode in state parameter
+    const authUrl = getAuthorizationUrl(req.userId);
     res.json({ authUrl });
   } catch (error) {
     console.error('Error generating auth URL:', error);
@@ -51,10 +53,11 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
   try {
     const { code, realmId, state, error } = req.query;
     
+    console.log('📥 OAuth callback received:', { code: !!code, realmId, state: !!state, error });
+    
     // Handle OAuth errors
     if (error) {
       console.error('OAuth error:', error);
-      // Send HTML that closes popup and notifies parent
       return res.send(`
         <html>
           <head><title>QuickBooks Connection Error</title></head>
@@ -73,23 +76,36 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
       `);
     }
     
-    if (!code || !realmId) {
-      return res.status(400).json({ error: 'Missing authorization code or realm ID' });
+    if (!code || !realmId || !state) {
+      console.error('Missing required OAuth parameters:', { code: !!code, realmId: !!realmId, state: !!state });
+      return res.status(400).send(`
+        <html>
+          <head><title>Invalid OAuth Response</title></head>
+          <body>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'qbo_error', error: 'missing_params' }, '*');
+                window.close();
+              }
+            </script>
+            <p>Invalid OAuth response. Missing required parameters.</p>
+          </body>
+        </html>
+      `);
     }
     
-    // Get user ID from state or session
-    // Note: In production, encode user ID in state parameter for security
-    // For now, we'll need to get it from Clerk auth
-    const userId = req.auth?.userId;
+    // Extract user ID from state parameter
+    const userId = extractUserIdFromState(state as string);
     
     if (!userId) {
+      console.error('❌ Could not extract user ID from state:', state);
       return res.send(`
         <html>
           <head><title>Authentication Required</title></head>
           <body>
             <script>
               if (window.opener) {
-                window.opener.postMessage({ type: 'qbo_error', error: 'no_user' }, '*');
+                window.opener.postMessage({ type: 'qbo_error', error: 'no_user_in_state' }, '*');
                 window.close();
               } else {
                 window.location.href = '/?qbo_error=true&error=no_user';
@@ -101,60 +117,41 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
       `);
     }
     
-    // Get internal user ID from Clerk user ID
-    const users = await sql`
-      SELECT id FROM users WHERE clerk_user_id = ${userId}
-    `;
-    
-    if (users.length === 0) {
-      return res.send(`
-        <html>
-          <head><title>User Not Found</title></head>
-          <body>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({ type: 'qbo_error', error: 'user_not_found' }, '*');
-                window.close();
-              } else {
-                window.location.href = '/?qbo_error=true&error=user_not_found';
-              }
-            </script>
-            <p>User not found. This window should close automatically...</p>
-          </body>
-        </html>
-      `);
-    }
-    
-    const internalUserId = users[0].id;
+    console.log('✓ User ID extracted from state:', userId);
     
     // Exchange code for tokens
+    console.log('🔄 Exchanging authorization code for tokens...');
     const { tokens } = await exchangeCodeForTokens(code as string);
+    console.log('✓ Tokens received from QuickBooks');
     
     // Store connection
+    console.log('💾 Storing connection in database...');
     await storeConnection(
-      internalUserId,
+      userId,
       realmId as string,
       tokens
     );
+    console.log('✓ Connection stored');
     
     // Try to get and update company name
     let companyName = '';
     try {
-      const companyInfo = await getCompanyInfo(internalUserId);
+      const companyInfo = await getCompanyInfo(userId);
       companyName = companyInfo.CompanyName;
+      console.log('✓ Company name retrieved:', companyName);
       
       await storeConnection(
-        internalUserId,
+        userId,
         realmId as string,
         tokens,
         companyName
       );
     } catch (error) {
-      console.error('Error fetching company info:', error);
+      console.error('⚠ Error fetching company info (non-fatal):', error);
       // Continue even if we can't get company info
     }
     
-    console.log('✅ QuickBooks connected successfully for user:', internalUserId);
+    console.log('✅ QuickBooks connected successfully for user:', userId);
     
     // Send HTML that closes popup and notifies parent window
     res.send(`
@@ -173,12 +170,17 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
               window.location.href = '/?qbo_connected=true';
             }
           </script>
-          <p>✅ QuickBooks connected successfully! This window will close automatically...</p>
+          <p>✅ QuickBooks connected successfully!</p>
+          <p>Company: ${companyName || 'Connected'}</p>
+          <p><small>This window will close automatically...</small></p>
         </body>
       </html>
     `);
   } catch (error) {
-    console.error('OAuth callback error:', error);
+    console.error('❌ OAuth callback error:', error);
+    console.error('Error details:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    
     res.send(`
       <html>
         <head><title>Connection Error</title></head>
@@ -192,6 +194,7 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
             }
           </script>
           <p>Connection failed. This window should close automatically...</p>
+          <p style="color: red; font-size: 12px;">Error: ${error instanceof Error ? error.message : 'Unknown error'}</p>
         </body>
       </html>
     `);

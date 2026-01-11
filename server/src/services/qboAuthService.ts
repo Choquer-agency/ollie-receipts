@@ -34,8 +34,9 @@ export interface TokenData {
 
 /**
  * Generate OAuth authorization URL
+ * @param userId - Internal user ID to encode in state parameter
  */
-export function getAuthorizationUrl(): string {
+export function getAuthorizationUrl(userId?: string): string {
   // Validate config before creating OAuth client
   if (!QB_CONFIG.clientId || !QB_CONFIG.clientSecret) {
     console.error('❌ QuickBooks OAuth config is incomplete!');
@@ -47,7 +48,9 @@ export function getAuthorizationUrl(): string {
   console.log('✓ Generating OAuth URL with Client ID:', QB_CONFIG.clientId.substring(0, 10) + '...');
   
   const oauthClient = createOAuthClient();
-  const state = generateState(); // Generate random state for CSRF protection
+  
+  // Encode user ID in state for secure callback handling
+  const state = userId ? `${generateState()}_uid_${userId}` : generateState();
   
   const authUrl = oauthClient.authorizeUri({
     scope: QB_CONFIG.scopes,
@@ -55,8 +58,17 @@ export function getAuthorizationUrl(): string {
   });
   
   console.log('✓ OAuth URL generated:', authUrl.substring(0, 100) + '...');
+  console.log('✓ State includes user ID:', !!userId);
   
   return authUrl;
+}
+
+/**
+ * Extract user ID from OAuth state parameter
+ */
+export function extractUserIdFromState(state: string): string | null {
+  const match = state.match(/_uid_(.+)$/);
+  return match ? match[1] : null;
 }
 
 /**
