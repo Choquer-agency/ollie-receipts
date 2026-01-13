@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, AlertCircle, Calendar, Link as LinkIcon, Calculator, Percent, Info } from 'lucide-react';
 import { Receipt, ReceiptStatus, QuickBooksAccount, PaymentAccount, TaxTreatment } from '../types';
-import { fetchAccounts, fetchPaymentAccounts, publishReceipt } from '../services/qboService';
+import { fetchAccounts, fetchPaymentAccounts, publishReceipt, isQBOConnectionError } from '../services/qboService';
 import StatusBadge from './StatusBadge';
 
 interface ReceiptReviewProps {
   receipt: Receipt;
   onUpdate: (updated: Receipt) => void;
   onBack: () => void;
+  onQboConnectionError?: () => void;
 }
 
 interface InputGroupProps {
@@ -57,7 +58,7 @@ const formatDateForInput = (dateString: string | undefined): string => {
   }
 };
 
-const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack }) => {
+const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack, onQboConnectionError }) => {
   // Debug: Log the receipt prop to see what data we're receiving
   console.log('ReceiptReview received receipt:', receipt);
   console.log('Receipt total:', receipt.total, 'Receipt tax:', receipt.tax, 'Receipt tax_rate:', receipt.tax_rate);
@@ -105,14 +106,26 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([fetchAccounts(), fetchPaymentAccounts()]).then(([expenses, payments]) => {
-      setExpenseAccounts(expenses);
-      setPaymentAccounts(payments);
-      
-      if (!formData.payment_account_id && payments.length > 0) {
-        setFormData(prev => ({ ...prev, payment_account_id: payments.find(p => p.type === 'Credit Card')?.id || payments[0].id }));
-      }
-    });
+    Promise.all([fetchAccounts(), fetchPaymentAccounts()])
+      .then(([expenses, payments]) => {
+        setExpenseAccounts(expenses);
+        setPaymentAccounts(payments);
+        
+        if (!formData.payment_account_id && payments.length > 0) {
+          setFormData(prev => ({ ...prev, payment_account_id: payments.find(p => p.type === 'Credit Card')?.id || payments[0].id }));
+        }
+      })
+      .catch(err => {
+        console.error('Error fetching QuickBooks accounts:', err);
+        if (isQBOConnectionError(err)) {
+          setError('QuickBooks connection expired. Please reconnect to continue.');
+          if (onQboConnectionError) {
+            onQboConnectionError();
+          }
+        } else {
+          setError('Failed to load QuickBooks accounts. Please try again.');
+        }
+      });
   }, []);
 
   const calculateTax = useCallback((total: number, rate: number, treatment: TaxTreatment) => {

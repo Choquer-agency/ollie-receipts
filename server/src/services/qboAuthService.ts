@@ -73,19 +73,30 @@ export function extractUserIdFromState(state: string): string | null {
 
 /**
  * Exchange authorization code for tokens
+ * @param callbackUrl - The full callback URL received from QuickBooks with all query parameters
  */
-export async function exchangeCodeForTokens(code: string, realmId: string): Promise<{
+export async function exchangeCodeForTokens(callbackUrl: string): Promise<{
   tokens: TokenData;
   realmId: string;
 }> {
   const oauthClient = createOAuthClient();
   
   try {
-    // Pass the redirect URI to match what was used during authorization
-    const authResponse = await oauthClient.createToken(
-      `${QB_CONFIG.redirectUri}?code=${code}&realmId=${realmId}`
-    );
+    console.log('🔄 Exchanging authorization code for tokens...');
+    console.log('📍 Callback URL:', callbackUrl.replace(/code=[^&]+/, 'code=REDACTED'));
+    
+    // Pass the full callback URL as received from QuickBooks
+    // The intuit-oauth library will parse the code, realmId, and state from it
+    const authResponse = await oauthClient.createToken(callbackUrl);
     const token = authResponse.token;
+    
+    console.log('✅ Token exchange successful');
+    console.log('📊 Token details:', {
+      hasAccessToken: !!token.access_token,
+      hasRefreshToken: !!token.refresh_token,
+      expiresIn: token.expires_in,
+      realmId: token.realmId,
+    });
     
     return {
       tokens: {
@@ -96,9 +107,11 @@ export async function exchangeCodeForTokens(code: string, realmId: string): Prom
       },
       realmId: token.realmId,
     };
-  } catch (error) {
-    console.error('Error exchanging code for tokens:', error);
-    throw new Error('Failed to exchange authorization code for tokens');
+  } catch (error: any) {
+    console.error('❌ Error exchanging code for tokens:', error);
+    console.error('Error details:', error.message || 'Unknown error');
+    console.error('Error response:', error.response?.data || 'No response data');
+    throw new Error(`Failed to exchange authorization code for tokens: ${error.message || 'Unknown error'}`);
   }
 }
 

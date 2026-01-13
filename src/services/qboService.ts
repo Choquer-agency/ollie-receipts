@@ -108,6 +108,25 @@ export const disconnectQBO = async (): Promise<boolean> => {
 };
 
 /**
+ * Check if an error is a QuickBooks connection error
+ */
+export const isQBOConnectionError = (error: any): boolean => {
+  if (!error) return false;
+  
+  const errorMessage = error.response?.data?.error || error.message || '';
+  const errorDetails = error.response?.data?.details || '';
+  
+  // Check for connection-related error messages
+  return (
+    errorMessage.includes('reconnect to QuickBooks') ||
+    errorDetails.includes('reconnect to QuickBooks') ||
+    errorMessage.includes('No valid QuickBooks connection') ||
+    errorDetails.includes('No valid QuickBooks connection') ||
+    error.response?.status === 401
+  );
+};
+
+/**
  * Fetch expense accounts (Chart of Accounts)
  */
 export const fetchAccounts = async (): Promise<QuickBooksAccount[]> => {

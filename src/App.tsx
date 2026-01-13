@@ -17,6 +17,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'new' | 'processing' | 'posted'>('new');
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [isQboConnected, setIsQboConnected] = useState(false);
+  const [qboConnectionNeedsRefresh, setQboConnectionNeedsRefresh] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
@@ -132,6 +133,15 @@ const App: React.FC = () => {
   const handleConnectQBO = async () => {
     const success = await connectToQuickBooks();
     setIsQboConnected(success);
+    if (success) {
+      setQboConnectionNeedsRefresh(false);
+    }
+  };
+  
+  const handleQboConnectionError = () => {
+    console.warn('QuickBooks connection error detected, marking for refresh');
+    setIsQboConnected(false);
+    setQboConnectionNeedsRefresh(true);
   };
 
   const formatCount = (count: number) => {
@@ -274,7 +284,30 @@ const App: React.FC = () => {
                  </button>
                ) : (
                  <>
-                  {!isQboConnected ? (
+                  {qboConnectionNeedsRefresh ? (
+                    <button 
+                     onClick={handleConnectQBO}
+                     style={{
+                       fontSize: 'var(--font-size-body)',
+                       fontWeight: 'var(--font-weight-semibold)',
+                       color: 'white',
+                       backgroundColor: '#FF6B00',
+                       padding: '8px 16px',
+                       borderRadius: 'var(--radius-md)',
+                       border: 'none',
+                       cursor: 'pointer',
+                       transition: 'var(--transition-default)',
+                     }}
+                     onMouseEnter={(e) => {
+                       e.currentTarget.style.opacity = '0.8';
+                     }}
+                     onMouseLeave={(e) => {
+                       e.currentTarget.style.opacity = '1';
+                     }}
+                    >
+                      Reconnect QuickBooks
+                    </button>
+                  ) : !isQboConnected ? (
                     <button 
                      onClick={handleConnectQBO}
                      style={{
@@ -313,7 +346,10 @@ const App: React.FC = () => {
                         <CheckCircle2 size={12} /> QBO Connected
                      </span>
                    )}
-                   <UserMenu />
+                   <UserMenu onDisconnectQBO={() => {
+                     setIsQboConnected(false);
+                     setQboConnectionNeedsRefresh(false);
+                   }} />
                  </>
                )}
             </div>
@@ -423,7 +459,8 @@ const App: React.FC = () => {
             <ReceiptReview 
               receipt={selectedReceipt} 
               onUpdate={handleUpdateReceipt} 
-              onBack={handleBackToList} 
+              onBack={handleBackToList}
+              onQboConnectionError={handleQboConnectionError}
             />
           )
         )}

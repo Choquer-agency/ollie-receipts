@@ -105,9 +105,17 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
     
     console.log('✓ User ID extracted from state:', userId);
     
-    // Exchange code for tokens
+    // Construct the full callback URL as received from QuickBooks
+    // This is what the intuit-oauth library expects
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const fullCallbackUrl = `${protocol}://${host}${req.originalUrl}`;
+    
+    console.log('🔄 Full callback URL constructed for token exchange');
+    
+    // Exchange code for tokens using the full callback URL
     console.log('🔄 Exchanging authorization code for tokens...');
-    const { tokens } = await exchangeCodeForTokens(code as string, realmId as string);
+    const { tokens } = await exchangeCodeForTokens(fullCallbackUrl);
     console.log('✓ Tokens received from QuickBooks');
     
     // Store connection

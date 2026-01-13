@@ -1,12 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useUser, useClerk } from '@clerk/clerk-react';
-import { User, LogOut, ChevronDown } from 'lucide-react';
+import { User, LogOut, ChevronDown, Unlink } from 'lucide-react';
+import { disconnectQBO, checkQBOStatus } from '../services/qboService';
 
-const UserMenu: React.FC = () => {
+interface UserMenuProps {
+  onDisconnectQBO?: () => void;
+}
+
+const UserMenu: React.FC<UserMenuProps> = ({ onDisconnectQBO }) => {
   const { user } = useUser();
   const { signOut } = useClerk();
   const [isOpen, setIsOpen] = useState(false);
+  const [isQboConnected, setIsQboConnected] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Check QB connection status when menu opens
+  useEffect(() => {
+    if (isOpen) {
+      checkQBOStatus().then(status => {
+        setIsQboConnected(status.connected);
+      });
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -34,6 +49,17 @@ const UserMenu: React.FC = () => {
       return user.firstName;
     }
     return user.primaryEmailAddress?.emailAddress || 'User';
+  };
+  
+  const handleDisconnectQBO = async () => {
+    const success = await disconnectQBO();
+    if (success) {
+      setIsQboConnected(false);
+      if (onDisconnectQBO) {
+        onDisconnectQBO();
+      }
+      setIsOpen(false);
+    }
   };
 
   return (
@@ -179,6 +205,37 @@ const UserMenu: React.FC = () => {
               <User size={16} style={{ color: 'var(--text-secondary)' }} />
               <span>Account settings</span>
             </button>
+
+            {/* Disconnect QuickBooks */}
+            {isQboConnected && (
+              <button
+                onClick={handleDisconnectQBO}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '10px 12px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: 'pointer',
+                  transition: 'var(--transition-default)',
+                  fontSize: 'var(--font-size-body)',
+                  color: 'var(--text-primary)',
+                  textAlign: 'left',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--background-muted)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
+                <Unlink size={16} style={{ color: 'var(--text-secondary)' }} />
+                <span>Disconnect QuickBooks</span>
+              </button>
+            )}
 
             {/* Sign Out */}
             <button
