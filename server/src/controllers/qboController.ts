@@ -285,7 +285,7 @@ export const getPaymentAccounts = async (req: AuthenticatedRequest, res: Respons
 const publishReceiptSchema = z.object({
   receiptId: z.string().uuid(),
   expenseAccountId: z.string(),
-  paymentAccountId: z.string().optional(),
+  paymentAccountId: z.string().nullable().optional(),
 });
 
 export const publishReceipt = async (req: AuthenticatedRequest, res: Response) => {
