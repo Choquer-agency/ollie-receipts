@@ -317,7 +317,7 @@ export const publishReceipt = async (req: AuthenticatedRequest, res: Response) =
       transactionDate: receipt.transaction_date,
       total: parseFloat(receipt.total),
       expenseAccountId: data.expenseAccountId,
-      paymentAccountId: data.paymentAccountId,
+      paymentAccountId: data.paymentAccountId || undefined, // Convert null to undefined
       isPaid: receipt.is_paid || false,
       publishTarget: receipt.publish_target || 'Expense',
       description: receipt.description,
