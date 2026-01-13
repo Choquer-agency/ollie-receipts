@@ -74,14 +74,17 @@ export function extractUserIdFromState(state: string): string | null {
 /**
  * Exchange authorization code for tokens
  */
-export async function exchangeCodeForTokens(code: string): Promise<{
+export async function exchangeCodeForTokens(code: string, realmId: string): Promise<{
   tokens: TokenData;
   realmId: string;
 }> {
   const oauthClient = createOAuthClient();
   
   try {
-    const authResponse = await oauthClient.createToken(code);
+    // Pass the redirect URI to match what was used during authorization
+    const authResponse = await oauthClient.createToken(
+      `${QB_CONFIG.redirectUri}?code=${code}&realmId=${realmId}`
+    );
     const token = authResponse.token;
     
     return {

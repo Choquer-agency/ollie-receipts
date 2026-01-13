@@ -107,7 +107,7 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
     
     // Exchange code for tokens
     console.log('🔄 Exchanging authorization code for tokens...');
-    const { tokens } = await exchangeCodeForTokens(code as string);
+    const { tokens } = await exchangeCodeForTokens(code as string, realmId as string);
     console.log('✓ Tokens received from QuickBooks');
     
     // Store connection
