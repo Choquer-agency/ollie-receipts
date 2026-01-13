@@ -226,7 +226,12 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
   };
 
   const handleTogglePaid = (checked: boolean) => {
-     setFormData(prev => ({ ...prev, is_paid: checked }));
+     setFormData(prev => ({ 
+       ...prev, 
+       is_paid: checked,
+       // Auto-sync publish_target: Paid -> Expense, Unpaid -> Bill
+       publish_target: checked ? 'Expense' : 'Bill'
+     }));
   };
 
   const handleSave = () => {
@@ -273,6 +278,12 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
   const handlePublish = async () => {
     if (!formData.qb_account_id) {
       setError("Please select a Category (Expense Account).");
+      return;
+    }
+    
+    // Validate payment account is selected when publishing as Expense
+    if (formData.publish_target === 'Expense' && !formData.payment_account_id) {
+      setError("Please select a Payment Method when publishing as Expense.");
       return;
     }
     
@@ -868,14 +879,20 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                  </div>
               </InputGroup>
 
-              {formData.is_paid && (
-                  <InputGroup label="Payment method">
+              {(formData.is_paid || formData.publish_target === 'Expense') && (
+                  <InputGroup label="Payment method" required>
                     <div style={{ position: 'relative' }}>
                         <select 
                             name="payment_account_id"
                             value={formData.payment_account_id || ''}
                             onChange={handleChange}
-                            style={inputBaseStyle}
+                            style={{
+                              ...inputBaseStyle,
+                              borderColor: formData.publish_target === 'Expense' && !formData.payment_account_id 
+                                ? 'var(--danger)' 
+                                : inputBaseStyle.borderColor
+                            }}
+                            required={formData.publish_target === 'Expense'}
                         >
                             <option value="">Select payment method...</option>
                             {paymentAccounts.map(acc => (
@@ -897,12 +914,31 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                  <select 
                     name="publish_target"
                     value={formData.publish_target}
-                    onChange={handleChange}
+                    onChange={(e) => {
+                      const target = e.target.value as 'Expense' | 'Bill';
+                      setFormData(prev => ({
+                        ...prev,
+                        publish_target: target,
+                        // Sync is_paid with publish_target
+                        is_paid: target === 'Expense'
+                      }));
+                    }}
                     style={inputBaseStyle}
                  >
-                    <option value="Expense">Expense (Credit Card / Cash)</option>
-                    <option value="Bill">Bill (Accounts Payable)</option>
+                    <option value="Expense">Expense (Paid - Credit Card/Cash)</option>
+                    <option value="Bill">Bill (Unpaid - Accounts Payable)</option>
                  </select>
+                 <small style={{ 
+                   color: 'var(--text-tertiary)', 
+                   fontSize: '0.75rem', 
+                   marginTop: '4px',
+                   display: 'block' 
+                 }}>
+                   {formData.publish_target === 'Expense' 
+                     ? '✓ Paid expense - requires payment method'
+                     : 'Unpaid bill - no payment needed'
+                   }
+                 </small>
               </InputGroup>
             </div>
           </div>

@@ -348,9 +348,20 @@ export async function publishReceiptToQuickBooks(
       throw new Error('Expense account (category) is required');
     }
     
-    // Determine whether to create Purchase or Bill
-    if (receiptData.isPaid && receiptData.paymentAccountId) {
-      // Create Purchase for paid expenses
+    console.log('📝 Publishing receipt with target:', receiptData.publishTarget);
+    console.log('📝 isPaid:', receiptData.isPaid, 'paymentAccountId:', !!receiptData.paymentAccountId);
+    
+    // Determine whether to create Purchase or Bill based on publishTarget
+    // publishTarget = 'Expense' means create a Purchase (expense transaction)
+    // publishTarget = 'Bill' means create a Bill (accounts payable)
+    if (receiptData.publishTarget === 'Expense') {
+      // Validate that payment account is provided for expenses
+      if (!receiptData.paymentAccountId) {
+        throw new Error('Payment account is required when publishing as Expense');
+      }
+      
+      // Create Purchase for expenses (paid transactions)
+      console.log('💰 Creating Purchase (Expense) in QuickBooks...');
       const purchase = await createPurchase(userId, {
         vendorName: receiptData.vendorName,
         transactionDate: receiptData.transactionDate,
@@ -361,12 +372,14 @@ export async function publishReceiptToQuickBooks(
         imageUrl: receiptData.imageUrl,
       });
       
+      console.log('✅ Purchase created with ID:', purchase.Id);
       return {
         transactionId: purchase.Id,
         transactionType: 'Purchase',
       };
     } else {
-      // Create Bill for unpaid expenses
+      // Create Bill for unpaid expenses (accounts payable)
+      console.log('📄 Creating Bill in QuickBooks...');
       const bill = await createBill(userId, {
         vendorName: receiptData.vendorName,
         transactionDate: receiptData.transactionDate,
@@ -376,6 +389,7 @@ export async function publishReceiptToQuickBooks(
         imageUrl: receiptData.imageUrl,
       });
       
+      console.log('✅ Bill created with ID:', bill.Id);
       return {
         transactionId: bill.Id,
         transactionType: 'Bill',
