@@ -30,6 +30,7 @@ export const parseReceiptImage = async (base64Data: string, mimeType: string): P
             - Tax Amount (if visible, otherwise 0)
             - Currency Code (e.g., USD, CAD, EUR - default to CAD if unclear)
             - Suggested Expense Category (e.g., "Meals & Entertainment", "Office Supplies", "Travel", "Software Subscription")
+            - Description (IMPORTANT - look for line items, products purchased, or itemized purchases. List them concisely, separated by commas. If no line items are visible, look for any notes, memo, or description fields on the receipt. If nothing is found, leave empty.)
 
             IMPORTANT: Transaction date is mandatory. Search carefully for any date on the receipt.
 
@@ -47,7 +48,8 @@ export const parseReceiptImage = async (base64Data: string, mimeType: string): P
             total: { type: Type.NUMBER },
             tax: { type: Type.NUMBER },
             currency: { type: Type.STRING },
-            suggested_category: { type: Type.STRING }
+            suggested_category: { type: Type.STRING },
+            description: { type: Type.STRING }
           },
           required: ["vendor_name", "transaction_date", "total", "suggested_category"]
         }
@@ -60,9 +62,15 @@ export const parseReceiptImage = async (base64Data: string, mimeType: string): P
 
     const parsed = JSON.parse(text.trim()) as ParsedReceiptData;
     
+    // Apply fallback: if description is empty or just whitespace, use vendor name
+    if (!parsed.description || parsed.description.trim() === '') {
+      parsed.description = parsed.vendor_name;
+    }
+    
     // Debug logging to see what OCR extracted
     console.log('OCR Extraction Result:', parsed);
     console.log('Transaction Date extracted:', parsed.transaction_date);
+    console.log('Description extracted:', parsed.description);
 
     return parsed;
 

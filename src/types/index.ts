@@ -69,5 +69,6 @@ export interface ParsedReceiptData {
   tax: number;
   currency: string;
   suggested_category: string;
+  description: string;
 }
 

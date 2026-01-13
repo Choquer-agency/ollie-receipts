@@ -145,6 +145,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
               total: parsedData.total,
               currency: parsedData.currency,
               suggestedCategory: parsedData.suggested_category,
+              description: parsedData.description,
               status: ReceiptStatus.OCR_COMPLETE,
             });
             
