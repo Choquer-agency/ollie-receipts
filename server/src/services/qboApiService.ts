@@ -41,12 +41,15 @@ async function makeQBRequest(
   const tokenData = await getValidAccessToken(userId);
   
   if (!tokenData) {
-    throw new Error('No valid QuickBooks connection found');
+    console.error(`❌ No valid QuickBooks connection for user ${userId}`);
+    throw new Error('No valid QuickBooks connection found. Please reconnect to QuickBooks.');
   }
   
   const { accessToken, realmId } = tokenData;
   const baseUrl = QB_CONFIG.getApiUrl();
   const url = `${baseUrl}/v3/company/${realmId}${endpoint}`;
+  
+  console.log(`🔄 Making QuickBooks ${method} request to: ${endpoint}`);
   
   const headers: Record<string, string> = {
     'Authorization': `Bearer ${accessToken}`,
@@ -68,13 +71,30 @@ async function makeQBRequest(
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('QuickBooks API error:', errorText);
-      throw new Error(`QuickBooks API error: ${response.status} ${response.statusText}`);
+      console.error(`❌ QuickBooks API error (${response.status}):`, errorText);
+      
+      // Parse error response if JSON
+      let errorDetails = errorText;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorDetails = JSON.stringify(errorJson, null, 2);
+        
+        // Check for specific authentication errors
+        if (errorJson.Fault?.Error?.[0]?.code === '3200' || response.status === 401) {
+          console.error('❌ Authentication error - token may be invalid or expired');
+          throw new Error('QuickBooks authentication failed. Please reconnect to QuickBooks.');
+        }
+      } catch (e) {
+        // Not JSON, use text as-is
+      }
+      
+      throw new Error(`QuickBooks API error: ${response.status} ${response.statusText} - ${errorDetails}`);
     }
     
+    console.log(`✅ QuickBooks ${method} request successful: ${endpoint}`);
     return await response.json();
   } catch (error) {
-    console.error('Error making QuickBooks request:', error);
+    console.error('❌ Error making QuickBooks request:', error);
     throw error;
   }
 }

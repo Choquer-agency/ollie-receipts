@@ -192,6 +192,8 @@ export async function refreshAccessToken(connection: QBConnection): Promise<QBCo
   const oauthClient = createOAuthClient();
   
   try {
+    console.log(`🔄 Refreshing access token for user ${connection.user_id}...`);
+    
     // Set the current refresh token
     oauthClient.setToken({
       refresh_token: connection.refresh_token,
@@ -227,12 +229,21 @@ export async function refreshAccessToken(connection: QBConnection): Promise<QBCo
       RETURNING *
     `;
     
-    console.log(`✓ Tokens refreshed for user ${connection.user_id} (refresh token renewed)`);
+    console.log(`✅ Tokens refreshed successfully for user ${connection.user_id} (new expiry: ${expiresAt.toISOString()})`);
     
     return result[0] as QBConnection;
-  } catch (error) {
-    console.error('Error refreshing access token:', error);
-    throw new Error('Failed to refresh access token');
+  } catch (error: any) {
+    console.error(`❌ Error refreshing access token for user ${connection.user_id}:`, error);
+    console.error('Error details:', error.message || 'Unknown error');
+    console.error('Error response:', error.response?.data || 'No response data');
+    
+    // If refresh token is expired or invalid, throw a specific error
+    if (error.error === 'invalid_grant' || error.intuit_tid) {
+      console.error('❌ Refresh token is invalid or expired. User needs to reconnect.');
+      throw new Error('QuickBooks refresh token expired. Please reconnect to QuickBooks.');
+    }
+    
+    throw new Error(`Failed to refresh access token: ${error.message || 'Unknown error'}`);
   }
 }
 
@@ -247,20 +258,45 @@ export async function getValidAccessToken(userId: string): Promise<{
   let connection = await getConnection(userId);
   
   if (!connection) {
+    console.error(`❌ No QuickBooks connection found for user ${userId}`);
     return null;
   }
+  
+  const now = Date.now();
+  const expiresAt = new Date(connection.token_expires_at).getTime();
+  const refreshTokenAge = now - new Date(connection.refresh_token_created_at).getTime();
+  const refreshTokenAgeDays = Math.floor(refreshTokenAge / (24 * 60 * 60 * 1000));
+  
+  console.log(`📊 Token status for user ${userId}:`);
+  console.log(`   - Access token expires: ${connection.token_expires_at}`);
+  console.log(`   - Time until expiry: ${Math.floor((expiresAt - now) / 1000 / 60)} minutes`);
+  console.log(`   - Refresh token age: ${refreshTokenAgeDays} days`);
   
   // Check if we need to refresh (either access token expired OR refresh token is old)
   const needsAccess = needsTokenRefresh(connection);
   const needsRefreshRenewal = needsRefreshTokenRenewal(connection);
   
   if (needsAccess) {
-    console.log('Access token needs refresh, refreshing...');
-    connection = await refreshAccessToken(connection);
+    console.log('⚠️  Access token needs refresh, refreshing...');
+    try {
+      connection = await refreshAccessToken(connection);
+    } catch (error: any) {
+      console.error('❌ Failed to refresh access token:', error.message);
+      // If refresh fails, the connection is likely invalid
+      return null;
+    }
   } else if (needsRefreshRenewal) {
     // Proactive refresh token renewal (Option 3: Hybrid - user activity trigger)
-    console.log(`Refresh token is ${Math.floor((Date.now() - new Date(connection.refresh_token_created_at).getTime()) / (24 * 60 * 60 * 1000))} days old, proactively renewing...`);
-    connection = await refreshAccessToken(connection);
+    console.log(`⚠️  Refresh token is ${refreshTokenAgeDays} days old, proactively renewing...`);
+    try {
+      connection = await refreshAccessToken(connection);
+    } catch (error: any) {
+      console.error('❌ Failed to proactively refresh token:', error.message);
+      // If refresh fails, the connection is likely invalid
+      return null;
+    }
+  } else {
+    console.log('✅ Access token is valid, no refresh needed');
   }
   
   return {
