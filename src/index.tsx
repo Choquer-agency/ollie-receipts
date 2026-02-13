@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { ClerkProvider } from '@clerk/clerk-react';
+import { ClerkProvider, AuthenticateWithRedirectCallback } from '@clerk/clerk-react';
 import App from './App';
 import './main.css';
 
@@ -10,14 +10,21 @@ if (!PUBLISHABLE_KEY) {
   throw new Error('Missing Clerk Publishable Key');
 }
 
+// Check if this is an OAuth callback (redirect from Google/Clerk)
+const isSSOCallback = window.location.pathname === '/sso-callback';
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ClerkProvider 
+    <ClerkProvider
       publishableKey={PUBLISHABLE_KEY}
       signInFallbackRedirectUrl="/"
       signUpFallbackRedirectUrl="/"
     >
-      <App />
+      {isSSOCallback ? (
+        <AuthenticateWithRedirectCallback />
+      ) : (
+        <App />
+      )}
     </ClerkProvider>
   </React.StrictMode>
 );

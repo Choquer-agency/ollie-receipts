@@ -45,7 +45,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
       // Use redirect strategy for OAuth flow
       await signIn?.authenticateWithRedirect({
         strategy: 'oauth_google',
-        redirectUrl: window.location.origin,
+        redirectUrl: window.location.origin + '/sso-callback',
         redirectUrlComplete: window.location.origin,
       });
     } catch (err: any) {
