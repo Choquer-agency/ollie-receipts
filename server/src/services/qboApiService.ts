@@ -24,9 +24,17 @@ export interface QBPurchase {
 
 export interface QBBill {
   Id: string;
+  SyncToken: string;
   TxnDate: string;
   TotalAmt: number;
   PrivateNote?: string;
+}
+
+export interface QBBillPayment {
+  Id: string;
+  TxnDate: string;
+  TotalAmt: number;
+  PayType: string;
 }
 
 /**
@@ -188,18 +196,14 @@ export async function createPurchase(
     expenseAccountId: string;
     paymentAccountId: string;
     description?: string;
-    imageUrl?: string;
   }
 ): Promise<QBPurchase> {
   try {
     // Get or create vendor
     const vendorId = await findOrCreateVendor(userId, receiptData.vendorName);
-    
-    // Build private note with description and image URL
-    let privateNote = receiptData.description || '';
-    if (receiptData.imageUrl) {
-      privateNote += `\n\nReceipt Image: ${receiptData.imageUrl}`;
-    }
+
+    // Build private note with description (image is attached separately)
+    const privateNote = receiptData.description || '';
     
     // Create Purchase entity
     const purchaseData = {
@@ -248,22 +252,18 @@ export async function createBill(
     expenseAccountId: string;
     dueDate?: string;
     description?: string;
-    imageUrl?: string;
   }
-): Promise<QBBill> {
+): Promise<{ bill: QBBill; vendorId: string }> {
   try {
     // Get or create vendor
     const vendorId = await findOrCreateVendor(userId, receiptData.vendorName);
-    
-    // Build private note with description and image URL
-    let privateNote = receiptData.description || '';
-    if (receiptData.imageUrl) {
-      privateNote += `\n\nReceipt Image: ${receiptData.imageUrl}`;
-    }
-    
+
+    // Build private note with description (image is attached separately)
+    const privateNote = receiptData.description || '';
+
     // Calculate due date (default to 30 days from transaction date if not provided)
     const dueDate = receiptData.dueDate || calculateDueDate(receiptData.transactionDate, 30);
-    
+
     // Create Bill entity
     const billData = {
       VendorRef: {
@@ -285,13 +285,66 @@ export async function createBill(
       ],
       ...(privateNote && { PrivateNote: privateNote.substring(0, 4000) }), // Max 4000 chars
     };
-    
+
     const response = await makeQBRequest(userId, '/bill', 'POST', billData);
-    
-    return response.Bill;
+
+    return { bill: response.Bill, vendorId };
   } catch (error) {
     console.error('Error creating bill:', error);
     throw new Error('Failed to create bill in QuickBooks');
+  }
+}
+
+/**
+ * Create BillPayment to mark a Bill as paid
+ */
+export async function createBillPayment(
+  userId: string,
+  data: {
+    vendorId: string;
+    billId: string;
+    totalAmt: number;
+    txnDate: string;
+    paymentAccountId: string;
+    paymentAccountType: 'Bank' | 'Credit Card';
+  }
+): Promise<QBBillPayment> {
+  try {
+    const payType = data.paymentAccountType === 'Credit Card' ? 'CreditCard' : 'Check';
+
+    const paymentData: any = {
+      VendorRef: { value: data.vendorId },
+      PayType: payType,
+      TotalAmt: data.totalAmt,
+      TxnDate: data.txnDate,
+      Line: [
+        {
+          Amount: data.totalAmt,
+          LinkedTxn: [
+            {
+              TxnId: data.billId,
+              TxnType: 'Bill',
+            },
+          ],
+        },
+      ],
+    };
+
+    if (payType === 'CreditCard') {
+      paymentData.CreditCardPayment = {
+        CCAccountRef: { value: data.paymentAccountId },
+      };
+    } else {
+      paymentData.CheckPayment = {
+        BankAccountRef: { value: data.paymentAccountId },
+      };
+    }
+
+    const response = await makeQBRequest(userId, '/billpayment', 'POST', paymentData);
+    return response.BillPayment;
+  } catch (error) {
+    console.error('Error creating bill payment:', error);
+    throw new Error('Failed to create bill payment in QuickBooks');
   }
 }
 
@@ -322,6 +375,121 @@ function calculateDueDate(transactionDate: string, daysFromNow: number): string 
 }
 
 /**
+ * Download image from URL and return as Buffer with content type
+ */
+async function downloadImage(imageUrl: string): Promise<{
+  buffer: Buffer;
+  contentType: string;
+  fileName: string;
+}> {
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const contentType = response.headers.get('content-type') || 'image/jpeg';
+
+  // Extract filename from URL
+  const urlPath = new URL(imageUrl).pathname;
+  const fileName = decodeURIComponent(urlPath.split('/').pop() || 'receipt.jpg');
+
+  return { buffer, contentType, fileName };
+}
+
+/**
+ * Upload receipt image as attachment to a QuickBooks transaction
+ */
+async function uploadAttachmentToQB(
+  userId: string,
+  transactionId: string,
+  transactionType: 'Purchase' | 'Bill',
+  imageBuffer: Buffer,
+  contentType: string,
+  fileName: string,
+): Promise<void> {
+  const tokenData = await getValidAccessToken(userId);
+  if (!tokenData) {
+    throw new Error('No valid QuickBooks connection found.');
+  }
+
+  const { accessToken, realmId } = tokenData;
+  const baseUrl = QB_CONFIG.getApiUrl();
+  const url = `${baseUrl}/v3/company/${realmId}/upload`;
+
+  const metadata = {
+    AttachableRef: [
+      {
+        EntityRef: {
+          type: transactionType,
+          value: transactionId,
+        },
+        IncludeOnSend: false,
+      },
+    ],
+    FileName: fileName,
+    ContentType: contentType,
+  };
+
+  // QuickBooks expects multipart/form-data with specific field names
+  const formData = new FormData();
+
+  formData.append(
+    'file_metadata_01',
+    new Blob([JSON.stringify(metadata)], { type: 'application/json' }),
+    'metadata.json'
+  );
+
+  formData.append(
+    'file_content_01',
+    new Blob([imageBuffer], { type: contentType }),
+    fileName
+  );
+
+  // Use native fetch for FormData/multipart support
+  const response = await globalThis.fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`❌ QuickBooks attachment upload error (${response.status}):`, errorText);
+    throw new Error(`Failed to upload attachment: ${response.status} ${response.statusText}`);
+  }
+
+  console.log('✅ Receipt image attached to QuickBooks transaction');
+}
+
+/**
+ * Attach receipt image to a QuickBooks transaction (non-fatal on failure)
+ */
+async function attachReceiptImage(
+  userId: string,
+  transactionId: string,
+  transactionType: 'Purchase' | 'Bill',
+  imageUrl?: string,
+): Promise<void> {
+  if (!imageUrl) return;
+
+  try {
+    console.log('📎 Downloading receipt image for attachment...');
+    const { buffer, contentType, fileName } = await downloadImage(imageUrl);
+
+    console.log('📎 Uploading receipt image to QuickBooks...');
+    await uploadAttachmentToQB(userId, transactionId, transactionType, buffer, contentType, fileName);
+  } catch (attachError) {
+    // Non-fatal: log but don't fail the publish
+    console.error('⚠️ Failed to attach receipt image (non-fatal):', attachError);
+  }
+}
+
+/**
  * Publish receipt to QuickBooks (creates Purchase or Bill based on receipt data)
  */
 export async function publishReceiptToQuickBooks(
@@ -332,6 +500,7 @@ export async function publishReceiptToQuickBooks(
     total: number;
     expenseAccountId: string;
     paymentAccountId?: string;
+    paymentAccountType?: 'Bank' | 'Credit Card';
     isPaid: boolean;
     publishTarget: 'Expense' | 'Bill';
     description?: string;
@@ -343,23 +512,22 @@ export async function publishReceiptToQuickBooks(
     if (!receiptData.vendorName || !receiptData.transactionDate || !receiptData.total) {
       throw new Error('Missing required receipt data (vendor, date, or total)');
     }
-    
+
     if (!receiptData.expenseAccountId) {
       throw new Error('Expense account (category) is required');
     }
-    
+
+    if (!receiptData.paymentAccountId) {
+      throw new Error('Payment account is required');
+    }
+
     console.log('📝 Publishing receipt with target:', receiptData.publishTarget);
-    console.log('📝 isPaid:', receiptData.isPaid, 'paymentAccountId:', !!receiptData.paymentAccountId);
-    
-    // Determine whether to create Purchase or Bill based on publishTarget
-    // publishTarget = 'Expense' means create a Purchase (expense transaction)
-    // publishTarget = 'Bill' means create a Bill (accounts payable)
+    console.log('📝 paymentAccountId:', !!receiptData.paymentAccountId, 'paymentAccountType:', receiptData.paymentAccountType);
+
+    let transactionId: string;
+    let transactionType: 'Purchase' | 'Bill';
+
     if (receiptData.publishTarget === 'Expense') {
-      // Validate that payment account is provided for expenses
-      if (!receiptData.paymentAccountId) {
-        throw new Error('Payment account is required when publishing as Expense');
-      }
-      
       // Create Purchase for expenses (paid transactions)
       console.log('💰 Creating Purchase (Expense) in QuickBooks...');
       const purchase = await createPurchase(userId, {
@@ -369,32 +537,59 @@ export async function publishReceiptToQuickBooks(
         expenseAccountId: receiptData.expenseAccountId,
         paymentAccountId: receiptData.paymentAccountId,
         description: receiptData.description,
-        imageUrl: receiptData.imageUrl,
       });
-      
+
       console.log('✅ Purchase created with ID:', purchase.Id);
-      return {
-        transactionId: purchase.Id,
-        transactionType: 'Purchase',
-      };
+      transactionId = purchase.Id;
+      transactionType = 'Purchase';
     } else {
-      // Create Bill for unpaid expenses (accounts payable)
+      // Create Bill (accounts payable) then auto-pay with BillPayment
       console.log('📄 Creating Bill in QuickBooks...');
-      const bill = await createBill(userId, {
+      const { bill, vendorId } = await createBill(userId, {
         vendorName: receiptData.vendorName,
         transactionDate: receiptData.transactionDate,
         total: receiptData.total,
         expenseAccountId: receiptData.expenseAccountId,
         description: receiptData.description,
-        imageUrl: receiptData.imageUrl,
       });
-      
+
       console.log('✅ Bill created with ID:', bill.Id);
-      return {
-        transactionId: bill.Id,
-        transactionType: 'Bill',
-      };
+
+      // Create BillPayment to mark the Bill as paid
+      console.log('💳 Creating BillPayment to mark Bill as paid...');
+      try {
+        const billPayment = await createBillPayment(userId, {
+          vendorId,
+          billId: bill.Id,
+          totalAmt: receiptData.total,
+          txnDate: receiptData.transactionDate,
+          paymentAccountId: receiptData.paymentAccountId,
+          paymentAccountType: receiptData.paymentAccountType || 'Credit Card',
+        });
+        console.log('✅ BillPayment created with ID:', billPayment.Id);
+      } catch (paymentError) {
+        // BillPayment failed — clean up the orphaned Bill
+        console.error('❌ BillPayment failed, attempting to delete orphaned Bill...');
+        try {
+          await makeQBRequest(userId, '/bill?operation=delete', 'POST', {
+            Id: bill.Id,
+            SyncToken: bill.SyncToken,
+          });
+          console.log('✅ Orphaned Bill deleted');
+        } catch (deleteError) {
+          console.error('❌ Failed to delete orphaned Bill:', deleteError);
+        }
+        throw new Error('Failed to create payment for the bill. Please try again.');
+      }
+
+      transactionId = bill.Id;
+      transactionType = 'Bill';
     }
+
+    // Attach receipt image (non-fatal on failure)
+    await attachReceiptImage(userId, transactionId, transactionType, receiptData.imageUrl);
+
+    return { transactionId, transactionType };
   } catch (error) {
     console.error('Error publishing receipt to QuickBooks:', error);
     throw error;

@@ -157,15 +157,18 @@ export const fetchPaymentAccounts = async (): Promise<PaymentAccount[]> => {
  */
 export const publishReceipt = async (
   receipt: Receipt,
-  accountId: string
+  accountId: string,
+  paymentAccountId: string,
+  paymentAccountType?: 'Bank' | 'Credit Card'
 ): Promise<string> => {
   try {
     const response = await api.post('/api/qbo/publish', {
       receiptId: receipt.id,
       expenseAccountId: accountId,
-      paymentAccountId: receipt.payment_account_id,
+      paymentAccountId,
+      paymentAccountType,
     });
-    
+
     return response.data.transactionId;
   } catch (error) {
     console.error('Error publishing receipt:', error);

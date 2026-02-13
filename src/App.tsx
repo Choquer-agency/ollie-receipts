@@ -131,10 +131,15 @@ const App: React.FC = () => {
   };
 
   const handleConnectQBO = async () => {
-    const success = await connectToQuickBooks();
-    setIsQboConnected(success);
-    if (success) {
-      setQboConnectionNeedsRefresh(false);
+    try {
+      const success = await connectToQuickBooks();
+      setIsQboConnected(success);
+      if (success) {
+        setQboConnectionNeedsRefresh(false);
+      }
+    } catch (error) {
+      console.error('Failed to connect to QuickBooks:', error);
+      setIsQboConnected(false);
     }
   };
   

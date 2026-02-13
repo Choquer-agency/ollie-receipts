@@ -7,6 +7,7 @@ import {
   getConnection,
   revokeConnection,
   extractUserIdFromState,
+  getValidAccessToken,
 } from '../services/qboAuthService.js';
 import {
   fetchExpenseAccounts,
@@ -202,13 +203,24 @@ export const getConnectionStatus = async (req: AuthenticatedRequest, res: Respon
   try {
     // req.userId is already the internal database ID
     const connection = await getConnection(req.userId!);
-    
+
     if (!connection) {
       return res.json({
         connected: false,
       });
     }
-    
+
+    // Validate that tokens are actually usable (attempt refresh if expired)
+    const validToken = await getValidAccessToken(req.userId!);
+    if (!validToken) {
+      console.warn(`⚠ QBO connection exists for user ${req.userId} but tokens are invalid/expired`);
+      return res.json({
+        connected: false,
+        error: 'token_expired',
+        companyName: connection.company_name,
+      });
+    }
+
     res.json({
       connected: true,
       companyName: connection.company_name,
@@ -293,7 +305,8 @@ export const getPaymentAccounts = async (req: AuthenticatedRequest, res: Respons
 const publishReceiptSchema = z.object({
   receiptId: z.string().uuid(),
   expenseAccountId: z.string(),
-  paymentAccountId: z.string().nullable().optional(),
+  paymentAccountId: z.string(),
+  paymentAccountType: z.enum(['Bank', 'Credit Card']).optional(),
 });
 
 export const publishReceipt = async (req: AuthenticatedRequest, res: Response) => {
@@ -325,7 +338,8 @@ export const publishReceipt = async (req: AuthenticatedRequest, res: Response) =
       transactionDate: receipt.transaction_date,
       total: parseFloat(receipt.total),
       expenseAccountId: data.expenseAccountId,
-      paymentAccountId: data.paymentAccountId || undefined, // Convert null to undefined
+      paymentAccountId: data.paymentAccountId,
+      paymentAccountType: data.paymentAccountType,
       isPaid: receipt.is_paid || false,
       publishTarget: receipt.publish_target || 'Expense',
       description: receipt.description,

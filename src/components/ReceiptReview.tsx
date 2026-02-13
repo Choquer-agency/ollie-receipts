@@ -117,7 +117,9 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
       })
       .catch(err => {
         console.error('Error fetching QuickBooks accounts:', err);
-        if (isQBOConnectionError(err)) {
+        const isConnectionError = isQBOConnectionError(err);
+        const is500 = err.response?.status === 500;
+        if (isConnectionError || is500) {
           setError('QuickBooks connection expired. Please reconnect to continue.');
           if (onQboConnectionError) {
             onQboConnectionError();
@@ -281,17 +283,18 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
       return;
     }
     
-    // Validate payment account is selected when publishing as Expense
-    if (formData.publish_target === 'Expense' && !formData.payment_account_id) {
-      setError("Please select a Payment Method when publishing as Expense.");
+    if (!formData.payment_account_id) {
+      setError("Please select a Payment Method.");
       return;
     }
-    
+
     setIsPublishing(true);
     setError(null);
 
     try {
-      const qbTxnId = await publishReceipt(receipt, formData.qb_account_id);
+      const selectedPaymentAccount = paymentAccounts.find(a => a.id === formData.payment_account_id);
+      const paymentAccountType = selectedPaymentAccount?.type as 'Bank' | 'Credit Card' | undefined;
+      const qbTxnId = await publishReceipt(receipt, formData.qb_account_id, formData.payment_account_id, paymentAccountType);
       
       // Create a properly formatted receipt object
       const publishedReceipt = {
@@ -879,36 +882,34 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                  </div>
               </InputGroup>
 
-              {(formData.is_paid || formData.publish_target === 'Expense') && (
-                  <InputGroup label="Payment method" required>
-                    <div style={{ position: 'relative' }}>
-                        <select 
-                            name="payment_account_id"
-                            value={formData.payment_account_id || ''}
-                            onChange={handleChange}
-                            style={{
-                              ...inputBaseStyle,
-                              borderColor: formData.publish_target === 'Expense' && !formData.payment_account_id 
-                                ? 'var(--danger)' 
-                                : inputBaseStyle.borderColor
-                            }}
-                            required={formData.publish_target === 'Expense'}
-                        >
-                            <option value="">Select payment method...</option>
-                            {paymentAccounts.map(acc => (
-                                <option key={acc.id} value={acc.id}>{acc.name}</option>
-                            ))}
-                        </select>
-                        <LinkIcon style={{
-                          position: 'absolute',
-                          right: '12px',
-                          top: '10px',
-                          color: 'var(--text-tertiary)',
-                          pointerEvents: 'none',
-                        }} size={14} />
-                    </div>
-                  </InputGroup>
-              )}
+              <InputGroup label="Payment method" required>
+                <div style={{ position: 'relative' }}>
+                    <select
+                        name="payment_account_id"
+                        value={formData.payment_account_id || ''}
+                        onChange={handleChange}
+                        style={{
+                          ...inputBaseStyle,
+                          borderColor: !formData.payment_account_id
+                            ? 'var(--danger)'
+                            : inputBaseStyle.borderColor
+                        }}
+                        required
+                    >
+                        <option value="">Select payment method...</option>
+                        {paymentAccounts.map(acc => (
+                            <option key={acc.id} value={acc.id}>{acc.name}</option>
+                        ))}
+                    </select>
+                    <LinkIcon style={{
+                      position: 'absolute',
+                      right: '12px',
+                      top: '10px',
+                      color: 'var(--text-tertiary)',
+                      pointerEvents: 'none',
+                    }} size={14} />
+                </div>
+              </InputGroup>
 
               <InputGroup label="Publish to">
                  <select 
@@ -925,18 +926,18 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                     }}
                     style={inputBaseStyle}
                  >
-                    <option value="Expense">Expense (Paid - Credit Card/Cash)</option>
-                    <option value="Bill">Bill (Unpaid - Accounts Payable)</option>
+                    <option value="Expense">Expense (Credit Card/Cash)</option>
+                    <option value="Bill">Bill (Accounts Payable)</option>
                  </select>
-                 <small style={{ 
-                   color: 'var(--text-tertiary)', 
-                   fontSize: '0.75rem', 
+                 <small style={{
+                   color: 'var(--text-tertiary)',
+                   fontSize: '0.75rem',
                    marginTop: '4px',
-                   display: 'block' 
+                   display: 'block'
                  }}>
-                   {formData.publish_target === 'Expense' 
-                     ? '✓ Paid expense - requires payment method'
-                     : 'Unpaid bill - no payment needed'
+                   {formData.publish_target === 'Expense'
+                     ? 'Direct expense transaction'
+                     : 'Bill with auto-payment applied'
                    }
                  </small>
               </InputGroup>

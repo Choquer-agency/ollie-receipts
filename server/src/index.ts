@@ -18,6 +18,9 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3331';
 
+// Trust proxy for Railway (ensures req.protocol returns 'https' behind reverse proxy)
+app.set('trust proxy', true);
+
 // Middleware
 app.use(cors({
   origin: [FRONTEND_URL, 'http://localhost:3331'],
@@ -71,6 +74,8 @@ app.listen(PORT, () => {
   const qbConfig = validateQBConfig();
   if (qbConfig.valid) {
     console.log('✓ QuickBooks configuration loaded');
+    console.log(`  Client ID: ${process.env.INTUIT_CLIENT_ID?.substring(0, 8)}...`);
+    console.log(`  Redirect URI: ${process.env.INTUIT_REDIRECT_URI}`);
     
     // Start background token refresh job (Option 3: Hybrid approach)
     if (process.env.QB_DISABLE_BACKGROUND_REFRESH !== 'true') {
