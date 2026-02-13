@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useUser, useClerk } from '@clerk/clerk-react';
+import { useUser, useClerk, OrganizationSwitcher } from '@clerk/clerk-react';
 import { User, LogOut, ChevronDown, Unlink } from 'lucide-react';
 import { disconnectQBO, checkQBOStatus } from '../services/qboService';
 
@@ -174,6 +174,31 @@ const UserMenu: React.FC<UserMenuProps> = ({ onDisconnectQBO }) => {
             >
               {user.primaryEmailAddress?.emailAddress}
             </p>
+          </div>
+
+          {/* Organization Switcher */}
+          <div style={{
+            padding: '8px 12px',
+            borderBottom: '1px solid var(--border-default)',
+          }}>
+            <OrganizationSwitcher
+              hidePersonal={false}
+              afterCreateOrganizationUrl="/"
+              afterLeaveOrganizationUrl="/"
+              afterSelectOrganizationUrl="/"
+              afterSelectPersonalUrl="/"
+              appearance={{
+                elements: {
+                  rootBox: { width: '100%' },
+                  organizationSwitcherTrigger: {
+                    width: '100%',
+                    justifyContent: 'space-between',
+                    padding: '8px 0',
+                    borderRadius: '6px',
+                  },
+                },
+              }}
+            />
           </div>
 
           {/* Menu Items */}

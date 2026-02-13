@@ -6,9 +6,10 @@ import { FileText, BrainCircuit, Square } from 'lucide-react';
 interface ReceiptListProps {
   receipts: Receipt[];
   onSelect: (receipt: Receipt) => void;
+  showUploadedBy?: boolean;
 }
 
-const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect }) => {
+const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect, showUploadedBy = false }) => {
   // Sort: Needs Review (OCR_COMPLETE) first, then Reviewed, then date descending
   const sortedReceipts = [...receipts].sort((a, b) => {
     const score = (status: ReceiptStatus) => {
@@ -107,6 +108,7 @@ const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect }) => {
             <div style={{ width: '128px' }}>Date</div>
             <div style={{ flex: 1 }}>Supplier</div>
             <div style={{ width: '256px' }}>Category</div>
+            {showUploadedBy && <div style={{ width: '128px' }}>Uploaded by</div>}
             <div style={{ width: '128px', textAlign: 'right' }}>Total</div>
             <div style={{ width: '96px', textAlign: 'right' }}>Tax</div>
             <div style={{ width: '128px' }}></div>
@@ -209,6 +211,21 @@ const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect }) => {
                       <BrainCircuit size={14} style={{ color: 'var(--text-tertiary)' }} />
                     </div>
                   </div>
+
+                  {/* Uploaded by */}
+                  {showUploadedBy && (
+                    <div style={{
+                      width: '128px',
+                      flexShrink: 0,
+                      fontSize: 'var(--font-size-small)',
+                      color: 'var(--text-secondary)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {receipt.uploaded_by_name || '--'}
+                    </div>
+                  )}
 
                   {/* Total */}
                   <div style={{

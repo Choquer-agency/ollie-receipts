@@ -505,7 +505,9 @@ export async function publishReceiptToQuickBooks(
     publishTarget: 'Expense' | 'Bill';
     description?: string;
     imageUrl?: string;
-  }
+    paidBy?: string;
+  },
+  organizationId?: string
 ): Promise<{ transactionId: string; transactionType: 'Purchase' | 'Bill' }> {
   try {
     // Validate receipt data
@@ -524,6 +526,13 @@ export async function publishReceiptToQuickBooks(
     console.log('📝 Publishing receipt with target:', receiptData.publishTarget);
     console.log('📝 paymentAccountId:', !!receiptData.paymentAccountId, 'paymentAccountType:', receiptData.paymentAccountType);
 
+    // Build description with "Paid by" annotation
+    let description = receiptData.description || '';
+    if (receiptData.paidBy) {
+      const paidByNote = `Paid by: ${receiptData.paidBy}`;
+      description = description ? `${description}\n${paidByNote}` : paidByNote;
+    }
+
     let transactionId: string;
     let transactionType: 'Purchase' | 'Bill';
 
@@ -536,7 +545,7 @@ export async function publishReceiptToQuickBooks(
         total: receiptData.total,
         expenseAccountId: receiptData.expenseAccountId,
         paymentAccountId: receiptData.paymentAccountId,
-        description: receiptData.description,
+        description,
       });
 
       console.log('✅ Purchase created with ID:', purchase.Id);
@@ -550,7 +559,7 @@ export async function publishReceiptToQuickBooks(
         transactionDate: receiptData.transactionDate,
         total: receiptData.total,
         expenseAccountId: receiptData.expenseAccountId,
-        description: receiptData.description,
+        description,
       });
 
       console.log('✅ Bill created with ID:', bill.Id);

@@ -15,6 +15,7 @@ export function createOAuthClient(): OAuthClient {
 export interface QBConnection {
   id: string;
   user_id: string;
+  organization_id: string | null;
   realm_id: string;
   access_token: string;
   refresh_token: string;
@@ -122,24 +123,27 @@ export async function storeConnection(
   userId: string,
   realmId: string,
   tokens: TokenData,
-  companyName?: string
+  companyName?: string,
+  organizationId?: string
 ): Promise<QBConnection> {
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
   const refreshTokenCreatedAt = new Date(); // Track when refresh token was created
-  
+
   try {
     // Use INSERT ... ON CONFLICT to handle updates for existing connections
     const result = await sql`
       INSERT INTO quickbooks_connections (
-        user_id, realm_id, access_token, refresh_token, 
-        token_expires_at, refresh_token_created_at, company_name
+        user_id, realm_id, access_token, refresh_token,
+        token_expires_at, refresh_token_created_at, company_name,
+        organization_id
       )
       VALUES (
-        ${userId}, ${realmId}, ${tokens.access_token}, 
+        ${userId}, ${realmId}, ${tokens.access_token},
         ${tokens.refresh_token}, ${expiresAt.toISOString()},
-        ${refreshTokenCreatedAt.toISOString()}, ${companyName || null}
+        ${refreshTokenCreatedAt.toISOString()}, ${companyName || null},
+        ${organizationId || null}
       )
-      ON CONFLICT (user_id) 
+      ON CONFLICT (user_id)
       DO UPDATE SET
         realm_id = EXCLUDED.realm_id,
         access_token = EXCLUDED.access_token,
@@ -147,10 +151,11 @@ export async function storeConnection(
         token_expires_at = EXCLUDED.token_expires_at,
         refresh_token_created_at = EXCLUDED.refresh_token_created_at,
         company_name = EXCLUDED.company_name,
+        organization_id = COALESCE(EXCLUDED.organization_id, quickbooks_connections.organization_id),
         last_refreshed_at = CURRENT_TIMESTAMP
       RETURNING *
     `;
-    
+
     return result[0] as QBConnection;
   } catch (error) {
     console.error('Error storing QB connection:', error);
@@ -159,15 +164,28 @@ export async function storeConnection(
 }
 
 /**
- * Get QuickBooks connection for a user
+ * Get QuickBooks connection for a user (or their org)
  */
-export async function getConnection(userId: string): Promise<QBConnection | null> {
+export async function getConnection(userId: string, organizationId?: string): Promise<QBConnection | null> {
   try {
+    // Try org-level connection first
+    if (organizationId) {
+      const orgResult = await sql`
+        SELECT * FROM quickbooks_connections
+        WHERE organization_id = ${organizationId}
+        LIMIT 1
+      `;
+      if (orgResult.length > 0) {
+        return orgResult[0] as QBConnection;
+      }
+    }
+
+    // Fallback to user-level connection
     const result = await sql`
       SELECT * FROM quickbooks_connections
       WHERE user_id = ${userId}
     `;
-    
+
     return result.length > 0 ? (result[0] as QBConnection) : null;
   } catch (error) {
     console.error('Error getting QB connection:', error);
@@ -264,11 +282,11 @@ export async function refreshAccessToken(connection: QBConnection): Promise<QBCo
  * Get valid access token (refresh if needed)
  * Option 3: Also proactively renews refresh token after 30 days (on user activity)
  */
-export async function getValidAccessToken(userId: string): Promise<{
+export async function getValidAccessToken(userId: string, organizationId?: string): Promise<{
   accessToken: string;
   realmId: string;
 } | null> {
-  let connection = await getConnection(userId);
+  let connection = await getConnection(userId, organizationId);
   
   if (!connection) {
     console.error(`❌ No QuickBooks connection found for user ${userId}`);
@@ -321,8 +339,8 @@ export async function getValidAccessToken(userId: string): Promise<{
 /**
  * Revoke tokens and delete connection
  */
-export async function revokeConnection(userId: string): Promise<boolean> {
-  const connection = await getConnection(userId);
+export async function revokeConnection(userId: string, organizationId?: string): Promise<boolean> {
+  const connection = await getConnection(userId, organizationId);
   
   if (!connection) {
     return false;

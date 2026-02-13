@@ -1,25 +1,47 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '@clerk/clerk-react';
-import { Receipt, ReceiptStatus } from './types';
+import { useAuth, useOrganization } from '@clerk/clerk-react';
+import { Receipt, ReceiptStatus, CachedCategory, CategoryRule, OrgRole } from './types';
 import { connectToQuickBooks, checkQBOStatus } from './services/qboService';
 import ReceiptList from './components/ReceiptList';
 import ReceiptUpload from './components/ReceiptUpload';
 import ReceiptReview from './components/ReceiptReview';
+import AccountPage from './components/AccountPage';
+import TeamManagement from './components/TeamManagement';
+import AuditLog from './components/AuditLog';
 import AuthModal from './components/AuthModal';
 import UserMenu from './components/UserMenu';
 import { CheckCircle2 } from 'lucide-react';
-import { receiptApi, setAuthToken, setTokenRefreshCallback } from './services/apiService';
+import { receiptApi, categoryApi, categoryRulesApi, setAuthToken, setTokenRefreshCallback } from './services/apiService';
+
+type ViewState = 'list' | 'review';
+type TabState = 'new' | 'processing' | 'posted' | 'account' | 'team' | 'audit';
 
 const App: React.FC = () => {
   const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { organization, membership } = useOrganization();
   const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [view, setView] = useState<'list' | 'review'>('list');
-  const [activeTab, setActiveTab] = useState<'new' | 'processing' | 'posted'>('new');
+  const [view, setView] = useState<ViewState>('list');
+  const [activeTab, setActiveTab] = useState<TabState>('new');
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [isQboConnected, setIsQboConnected] = useState(false);
   const [qboConnectionNeedsRefresh, setQboConnectionNeedsRefresh] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [cachedCategories, setCachedCategories] = useState<CachedCategory[]>([]);
+  const [isSyncingCategories, setIsSyncingCategories] = useState(false);
+  const [categoryRules, setCategoryRules] = useState<CategoryRule[]>([]);
+
+  // Derive org context and permissions
+  const isInOrg = !!organization;
+  const orgRole = (membership?.role as OrgRole) || null;
+  const isAdmin = orgRole === 'org:admin';
+  const isBookkeeper = orgRole === 'org:bookkeeper';
+  const isEmployee = orgRole === 'org:member';
+  const canReview = !isInOrg || isAdmin || isBookkeeper;
+  const canPublish = !isInOrg || isAdmin || isBookkeeper;
+  const canManageTeam = isInOrg && isAdmin;
+  const canViewAudit = isInOrg && isAdmin;
+  const canConnectQBO = !isInOrg || isAdmin;
 
   // Close auth modal when user signs in
   useEffect(() => {
@@ -41,6 +63,7 @@ const App: React.FC = () => {
     });
   }, [getToken]);
 
+  // Reload data when org context changes
   useEffect(() => {
     const loadReceipts = async () => {
       if (!isLoaded || !isSignedIn) {
@@ -53,28 +76,38 @@ const App: React.FC = () => {
         if (token) {
           setAuthToken(token);
           const data = await receiptApi.getAll();
-          // Ensure we always have an array
           if (Array.isArray(data)) {
             setReceipts(data);
           } else {
             console.warn('API returned non-array data:', data);
             setReceipts([]);
           }
-          
+
           // Check QuickBooks connection status
           const qboStatus = await checkQBOStatus();
           setIsQboConnected(qboStatus.connected);
+
+          // Sync categories and load rules in background when QB is connected
+          if (qboStatus.connected) {
+            categoryApi.sync()
+              .then(() => Promise.all([categoryApi.getAll(), categoryRulesApi.getAll()]))
+              .then(([cats, rules]) => {
+                setCachedCategories(cats);
+                setCategoryRules(rules);
+              })
+              .catch(err => console.error('Category sync failed (non-fatal):', err));
+          }
         }
       } catch (error) {
         console.error('Failed to load receipts:', error);
-        setReceipts([]); // Set empty array on error
+        setReceipts([]);
       } finally {
         setLoading(false);
       }
     };
 
     loadReceipts();
-  }, [isLoaded, isSignedIn, getToken]);
+  }, [isLoaded, isSignedIn, getToken, organization?.id]);
 
   const handleUploadComplete = (receipt: Receipt) => {
     setReceipts(prev => {
@@ -87,14 +120,13 @@ const App: React.FC = () => {
   };
 
   const handleSelectReceipt = (receipt: Receipt) => {
+    if (!canReview) return;
     setSelectedReceipt(receipt);
     setView('review');
   };
 
   const handleUpdateReceipt = async (updated: Receipt) => {
     try {
-      // Transform snake_case to camelCase for API
-      // Convert null to undefined (Zod's .optional() accepts undefined but not null)
       const apiData: any = {
         imageUrl: updated.image_url,
         status: updated.status,
@@ -114,8 +146,9 @@ const App: React.FC = () => {
         isPaid: updated.is_paid ?? undefined,
         paymentAccountId: updated.payment_account_id ?? undefined,
         qbAccountId: updated.qb_account_id ?? undefined,
+        paidBy: updated.paid_by ?? undefined,
       };
-      
+
       await receiptApi.update(updated.id, apiData);
       setReceipts(prev => prev.map(r => r.id === updated.id ? updated : r));
     } catch (error: any) {
@@ -142,11 +175,33 @@ const App: React.FC = () => {
       setIsQboConnected(false);
     }
   };
-  
+
   const handleQboConnectionError = () => {
     console.warn('QuickBooks connection error detected, marking for refresh');
     setIsQboConnected(false);
     setQboConnectionNeedsRefresh(true);
+  };
+
+  const handleSyncCategories = async () => {
+    setIsSyncingCategories(true);
+    try {
+      await categoryApi.sync();
+      const cats = await categoryApi.getAll();
+      setCachedCategories(cats);
+    } catch (error) {
+      console.error('Failed to sync categories:', error);
+    } finally {
+      setIsSyncingCategories(false);
+    }
+  };
+
+  const refreshRules = async () => {
+    try {
+      const rules = await categoryRulesApi.getAll();
+      setCategoryRules(rules);
+    } catch (error) {
+      console.error('Failed to refresh rules:', error);
+    }
   };
 
   const formatCount = (count: number) => {
@@ -156,9 +211,9 @@ const App: React.FC = () => {
     return count.toString();
   };
 
-  const newReceipts = receipts.filter(r => 
-    r.status === ReceiptStatus.OCR_COMPLETE || 
-    r.status === ReceiptStatus.REVIEWED || 
+  const newReceipts = receipts.filter(r =>
+    r.status === ReceiptStatus.OCR_COMPLETE ||
+    r.status === ReceiptStatus.REVIEWED ||
     r.status === ReceiptStatus.ERROR
   );
   const processingReceipts = receipts.filter(r => r.status === ReceiptStatus.UPLOADED);
@@ -172,16 +227,16 @@ const App: React.FC = () => {
     }
   };
 
-  const TabButton = ({ 
-    id, 
-    label, 
-    count, 
-    isActive 
-  }: { 
-    id: typeof activeTab, 
-    label: string, 
-    count: number, 
-    isActive: boolean 
+  const TabButton = ({
+    id,
+    label,
+    count,
+    isActive
+  }: {
+    id: TabState,
+    label: string,
+    count?: number,
+    isActive: boolean
   }) => (
     <button
       onClick={() => setActiveTab(id)}
@@ -216,18 +271,88 @@ const App: React.FC = () => {
       }}
     >
       {label}
-      <span style={{
-        padding: '2px 8px',
-        borderRadius: 'var(--radius-md)',
-        fontSize: 'var(--font-size-small)',
-        fontWeight: 'var(--font-weight-semibold)',
-        backgroundColor: isActive ? 'var(--background-muted)' : 'var(--background-muted)',
-        color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-      }}>
-        {formatCount(count)}
-      </span>
+      {count !== undefined && (
+        <span style={{
+          padding: '2px 8px',
+          borderRadius: 'var(--radius-md)',
+          fontSize: 'var(--font-size-small)',
+          fontWeight: 'var(--font-weight-semibold)',
+          backgroundColor: 'var(--background-muted)',
+          color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+        }}>
+          {formatCount(count)}
+        </span>
+      )}
     </button>
   );
+
+  // Render QBO connect button (only admin in org mode, or always in solo mode)
+  const renderQboButton = () => {
+    if (!canConnectQBO) return null;
+
+    if (qboConnectionNeedsRefresh) {
+      return (
+        <button
+          onClick={handleConnectQBO}
+          style={{
+            fontSize: 'var(--font-size-body)',
+            fontWeight: 'var(--font-weight-semibold)',
+            color: 'white',
+            backgroundColor: '#FF6B00',
+            padding: '8px 16px',
+            borderRadius: 'var(--radius-md)',
+            border: 'none',
+            cursor: 'pointer',
+            transition: 'var(--transition-default)',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.8'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
+        >
+          Reconnect QuickBooks
+        </button>
+      );
+    }
+
+    if (!isQboConnected) {
+      return (
+        <button
+          onClick={handleConnectQBO}
+          style={{
+            fontSize: 'var(--font-size-body)',
+            fontWeight: 'var(--font-weight-semibold)',
+            color: 'white',
+            backgroundColor: '#00C020',
+            padding: '8px 16px',
+            borderRadius: 'var(--radius-md)',
+            border: 'none',
+            cursor: 'pointer',
+            transition: 'var(--transition-default)',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.8'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
+        >
+          Connect QuickBooks
+        </button>
+      );
+    }
+
+    return (
+      <span style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        fontSize: 'var(--font-size-small)',
+        fontWeight: 'var(--font-weight-semibold)',
+        color: 'var(--status-success-text)',
+        backgroundColor: 'var(--status-success-bg)',
+        padding: '4px 10px',
+        borderRadius: 'var(--radius-md)',
+        border: '1px solid var(--status-success-text)',
+      }}>
+        <CheckCircle2 size={12} /> QBO Connected
+      </span>
+    );
+  };
 
   return (
     <div style={{ minHeight: '100vh', paddingBottom: '48px' }}>
@@ -254,18 +379,27 @@ const App: React.FC = () => {
               alignItems: 'center',
               gap: '8px',
             }}>
-              <img 
-                src="/logo.svg" 
-                alt="Ollie Receipts" 
-                style={{ 
+              <img
+                src="/logo.svg"
+                alt="Ollie Receipts"
+                style={{
                   height: '24px',
                   width: 'auto'
-                }} 
+                }}
               />
+              {isInOrg && (
+                <span style={{
+                  fontSize: 'var(--font-size-small)',
+                  color: 'var(--text-secondary)',
+                  marginLeft: '8px',
+                }}>
+                  {organization?.name}
+                </span>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                {!isSignedIn ? (
-                 <button 
+                 <button
                    onClick={() => setShowAuthModal(true)}
                    style={{
                      fontSize: 'var(--font-size-body)',
@@ -289,68 +423,7 @@ const App: React.FC = () => {
                  </button>
                ) : (
                  <>
-                  {qboConnectionNeedsRefresh ? (
-                    <button 
-                     onClick={handleConnectQBO}
-                     style={{
-                       fontSize: 'var(--font-size-body)',
-                       fontWeight: 'var(--font-weight-semibold)',
-                       color: 'white',
-                       backgroundColor: '#FF6B00',
-                       padding: '8px 16px',
-                       borderRadius: 'var(--radius-md)',
-                       border: 'none',
-                       cursor: 'pointer',
-                       transition: 'var(--transition-default)',
-                     }}
-                     onMouseEnter={(e) => {
-                       e.currentTarget.style.opacity = '0.8';
-                     }}
-                     onMouseLeave={(e) => {
-                       e.currentTarget.style.opacity = '1';
-                     }}
-                    >
-                      Reconnect QuickBooks
-                    </button>
-                  ) : !isQboConnected ? (
-                    <button 
-                     onClick={handleConnectQBO}
-                     style={{
-                       fontSize: 'var(--font-size-body)',
-                       fontWeight: 'var(--font-weight-semibold)',
-                       color: 'white',
-                       backgroundColor: '#00C020',
-                       padding: '8px 16px',
-                       borderRadius: 'var(--radius-md)',
-                       border: 'none',
-                       cursor: 'pointer',
-                       transition: 'var(--transition-default)',
-                     }}
-                     onMouseEnter={(e) => {
-                       e.currentTarget.style.opacity = '0.8';
-                     }}
-                     onMouseLeave={(e) => {
-                       e.currentTarget.style.opacity = '1';
-                     }}
-                    >
-                      Connect QuickBooks
-                    </button>
-                   ) : (
-                     <span style={{
-                       display: 'flex',
-                       alignItems: 'center',
-                       gap: '6px',
-                       fontSize: 'var(--font-size-small)',
-                       fontWeight: 'var(--font-weight-semibold)',
-                       color: 'var(--status-success-text)',
-                       backgroundColor: 'var(--status-success-bg)',
-                       padding: '4px 10px',
-                       borderRadius: 'var(--radius-md)',
-                       border: '1px solid var(--status-success-text)',
-                     }}>
-                        <CheckCircle2 size={12} /> QBO Connected
-                     </span>
-                   )}
+                   {renderQboButton()}
                    <UserMenu onDisconnectQBO={() => {
                      setIsQboConnected(false);
                      setQboConnectionNeedsRefresh(false);
@@ -389,7 +462,7 @@ const App: React.FC = () => {
             }}>
               Please sign in to manage your receipts
             </p>
-            <button 
+            <button
               onClick={() => setShowAuthModal(true)}
               style={{
                 fontSize: 'var(--font-size-body)',
@@ -429,51 +502,98 @@ const App: React.FC = () => {
                 <div style={{
                   display: 'flex',
                   gap: '32px',
+                  width: '100%',
                 }}>
-                  <TabButton 
-                    id="new" 
-                    label="New receipts" 
-                    count={newReceipts.length} 
-                    isActive={activeTab === 'new'} 
+                  <TabButton
+                    id="new"
+                    label="New receipts"
+                    count={newReceipts.length}
+                    isActive={activeTab === 'new'}
                   />
-                  <TabButton 
-                    id="processing" 
-                    label="Processing" 
-                    count={processingReceipts.length} 
-                    isActive={activeTab === 'processing'} 
+                  <TabButton
+                    id="processing"
+                    label="Processing"
+                    count={processingReceipts.length}
+                    isActive={activeTab === 'processing'}
                   />
-                  <TabButton 
-                    id="posted" 
-                    label="Posted receipts" 
-                    count={postedReceipts.length} 
-                    isActive={activeTab === 'posted'} 
+                  <TabButton
+                    id="posted"
+                    label="Posted receipts"
+                    count={postedReceipts.length}
+                    isActive={activeTab === 'posted'}
                   />
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: '32px' }}>
+                    {canManageTeam && (
+                      <TabButton
+                        id="team"
+                        label="Team"
+                        isActive={activeTab === 'team'}
+                      />
+                    )}
+                    {canViewAudit && (
+                      <TabButton
+                        id="audit"
+                        label="Activity"
+                        isActive={activeTab === 'audit'}
+                      />
+                    )}
+                    <TabButton
+                      id="account"
+                      label="Account"
+                      count={cachedCategories.length}
+                      isActive={activeTab === 'account'}
+                    />
+                  </div>
                 </div>
              </div>
 
-             {activeTab === 'new' && (
-                <ReceiptUpload onUploadComplete={handleUploadComplete} />
+             {activeTab === 'account' ? (
+                <AccountPage
+                  categories={cachedCategories}
+                  rules={categoryRules}
+                  isQboConnected={isQboConnected}
+                  onSyncCategories={handleSyncCategories}
+                  onRulesChanged={refreshRules}
+                  isSyncing={isSyncingCategories}
+                />
+             ) : activeTab === 'team' && canManageTeam ? (
+                <TeamManagement />
+             ) : activeTab === 'audit' && canViewAudit ? (
+                <AuditLog />
+             ) : (
+               <>
+                 {activeTab === 'new' && (
+                    <ReceiptUpload onUploadComplete={handleUploadComplete} />
+                 )}
+                 <div style={{ marginTop: '16px' }}>
+                    <ReceiptList
+                      receipts={getCurrentList()}
+                      onSelect={handleSelectReceipt}
+                      showUploadedBy={isInOrg && !isEmployee}
+                    />
+                 </div>
+               </>
              )}
-
-             <div style={{ marginTop: '16px' }}>
-                <ReceiptList receipts={getCurrentList()} onSelect={handleSelectReceipt} />
-             </div>
           </div>
         ) : (
           selectedReceipt && (
-            <ReceiptReview 
-              receipt={selectedReceipt} 
-              onUpdate={handleUpdateReceipt} 
+            <ReceiptReview
+              receipt={selectedReceipt}
+              onUpdate={handleUpdateReceipt}
               onBack={handleBackToList}
               onQboConnectionError={handleQboConnectionError}
+              cachedCategories={cachedCategories}
+              onRuleCreated={refreshRules}
+              canPublish={canPublish}
+              isInOrg={isInOrg}
             />
           )
         )}
       </main>
 
       {/* Auth Modal */}
-      <AuthModal 
-        isOpen={showAuthModal} 
+      <AuthModal
+        isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
       />
     </div>
@@ -481,4 +601,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-

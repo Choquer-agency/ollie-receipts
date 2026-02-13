@@ -5,6 +5,8 @@ import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL } from '../config/r2.js';
 import { z } from 'zod';
+import { logAuditEvent } from '../services/auditService.js';
+import { matchRule, incrementRuleApplied } from '../services/categoryRulesService.js';
 
 // Validation schemas
 const createReceiptSchema = z.object({
@@ -26,6 +28,7 @@ const createReceiptSchema = z.object({
   isPaid: z.boolean().optional(),
   paymentAccountId: z.string().optional(),
   qbAccountId: z.string().optional(),
+  paidBy: z.string().optional(),
 });
 
 const updateReceiptSchema = createReceiptSchema.partial();
@@ -46,17 +49,28 @@ const checkForDuplicate = async (
     subtotal?: number;
     tax?: number;
     total?: number;
-  }
+  },
+  organizationId?: string
 ): Promise<DuplicateCheckResult> => {
-  // Check 1: Filename match
+  // Check 1: Filename match (scoped to org or user)
   if (filename) {
-    const filenameMatches = await sql`
-      SELECT id FROM receipts
-      WHERE user_id = ${userId}
-      AND original_filename = ${filename}
-      LIMIT 1
-    `;
-    
+    let filenameMatches;
+    if (organizationId) {
+      filenameMatches = await sql`
+        SELECT id FROM receipts
+        WHERE organization_id = ${organizationId}
+        AND original_filename = ${filename}
+        LIMIT 1
+      `;
+    } else {
+      filenameMatches = await sql`
+        SELECT id FROM receipts
+        WHERE user_id = ${userId}
+        AND original_filename = ${filename}
+        LIMIT 1
+      `;
+    }
+
     if (filenameMatches.length > 0) {
       return {
         isDuplicate: true,
@@ -67,20 +81,34 @@ const checkForDuplicate = async (
   }
 
   // Check 2: Transaction details match (all fields must match)
-  if (transactionDetails?.vendorName && 
-      transactionDetails?.transactionDate && 
+  if (transactionDetails?.vendorName &&
+      transactionDetails?.transactionDate &&
       transactionDetails?.total !== undefined) {
-    const detailsMatches = await sql`
-      SELECT id FROM receipts
-      WHERE user_id = ${userId}
-      AND vendor_name = ${transactionDetails.vendorName}
-      AND transaction_date = ${transactionDetails.transactionDate}
-      AND total = ${transactionDetails.total}
-      AND COALESCE(tax, 0) = ${transactionDetails.tax || 0}
-      AND COALESCE(subtotal, 0) = ${transactionDetails.subtotal || 0}
-      LIMIT 1
-    `;
-    
+    let detailsMatches;
+    if (organizationId) {
+      detailsMatches = await sql`
+        SELECT id FROM receipts
+        WHERE organization_id = ${organizationId}
+        AND vendor_name = ${transactionDetails.vendorName}
+        AND transaction_date = ${transactionDetails.transactionDate}
+        AND total = ${transactionDetails.total}
+        AND COALESCE(tax, 0) = ${transactionDetails.tax || 0}
+        AND COALESCE(subtotal, 0) = ${transactionDetails.subtotal || 0}
+        LIMIT 1
+      `;
+    } else {
+      detailsMatches = await sql`
+        SELECT id FROM receipts
+        WHERE user_id = ${userId}
+        AND vendor_name = ${transactionDetails.vendorName}
+        AND transaction_date = ${transactionDetails.transactionDate}
+        AND total = ${transactionDetails.total}
+        AND COALESCE(tax, 0) = ${transactionDetails.tax || 0}
+        AND COALESCE(subtotal, 0) = ${transactionDetails.subtotal || 0}
+        LIMIT 1
+      `;
+    }
+
     if (detailsMatches.length > 0) {
       return {
         isDuplicate: true,
@@ -96,26 +124,77 @@ const checkForDuplicate = async (
 export const getReceipts = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { status } = req.query;
-    
-    console.log('getReceipts called for user:', req.userId);
-    
+
+    console.log('getReceipts called for user:', req.userId, 'org:', req.organizationId);
+
     let receipts;
-    if (status) {
-      receipts = await sql`
-        SELECT * FROM receipts 
-        WHERE user_id = ${req.userId} AND status = ${status as string}
-        ORDER BY created_at DESC
-      `;
+
+    if (req.organizationId) {
+      // Org mode
+      const isEmployee = req.orgRole === 'org:member';
+
+      if (isEmployee) {
+        // Employees only see their own uploads
+        if (status) {
+          receipts = await sql`
+            SELECT r.*, u.name as uploaded_by_name
+            FROM receipts r
+            LEFT JOIN users u ON r.uploaded_by = u.id
+            WHERE r.organization_id = ${req.organizationId}
+              AND r.uploaded_by = ${req.userId}
+              AND r.status = ${status as string}
+            ORDER BY r.created_at DESC
+          `;
+        } else {
+          receipts = await sql`
+            SELECT r.*, u.name as uploaded_by_name
+            FROM receipts r
+            LEFT JOIN users u ON r.uploaded_by = u.id
+            WHERE r.organization_id = ${req.organizationId}
+              AND r.uploaded_by = ${req.userId}
+            ORDER BY r.created_at DESC
+          `;
+        }
+      } else {
+        // Admin/Bookkeeper see all org receipts
+        if (status) {
+          receipts = await sql`
+            SELECT r.*, u.name as uploaded_by_name
+            FROM receipts r
+            LEFT JOIN users u ON r.uploaded_by = u.id
+            WHERE r.organization_id = ${req.organizationId}
+              AND r.status = ${status as string}
+            ORDER BY r.created_at DESC
+          `;
+        } else {
+          receipts = await sql`
+            SELECT r.*, u.name as uploaded_by_name
+            FROM receipts r
+            LEFT JOIN users u ON r.uploaded_by = u.id
+            WHERE r.organization_id = ${req.organizationId}
+            ORDER BY r.created_at DESC
+          `;
+        }
+      }
     } else {
-      receipts = await sql`
-        SELECT * FROM receipts 
-        WHERE user_id = ${req.userId}
-        ORDER BY created_at DESC
-      `;
+      // Solo mode (no org)
+      if (status) {
+        receipts = await sql`
+          SELECT * FROM receipts
+          WHERE user_id = ${req.userId} AND status = ${status as string}
+          ORDER BY created_at DESC
+        `;
+      } else {
+        receipts = await sql`
+          SELECT * FROM receipts
+          WHERE user_id = ${req.userId}
+          ORDER BY created_at DESC
+        `;
+      }
     }
 
     console.log('Found', receipts.length, 'receipts');
-    
+
     // Always return an array
     res.json(Array.isArray(receipts) ? receipts : []);
   } catch (error) {
@@ -128,10 +207,24 @@ export const getReceiptById = async (req: AuthenticatedRequest, res: Response) =
   try {
     const { id } = req.params;
 
-    const receipts = await sql`
-      SELECT * FROM receipts 
-      WHERE id = ${id} AND user_id = ${req.userId}
-    `;
+    let receipts;
+    if (req.organizationId) {
+      receipts = await sql`
+        SELECT r.*, u.name as uploaded_by_name
+        FROM receipts r
+        LEFT JOIN users u ON r.uploaded_by = u.id
+        WHERE r.id = ${id} AND r.organization_id = ${req.organizationId}
+      `;
+      // Employee can only see own receipts
+      if (receipts.length > 0 && req.orgRole === 'org:member' && receipts[0].uploaded_by !== req.userId) {
+        return res.status(403).json({ error: 'You can only view your own receipts' });
+      }
+    } else {
+      receipts = await sql`
+        SELECT * FROM receipts
+        WHERE id = ${id} AND user_id = ${req.userId}
+      `;
+    }
 
     if (receipts.length === 0) {
       return res.status(404).json({ error: 'Receipt not found' });
@@ -148,7 +241,7 @@ export const createReceipt = async (req: AuthenticatedRequest, res: Response) =>
   try {
     console.log('createReceipt called for user:', req.userId);
     console.log('createReceipt body:', req.body);
-    
+
     const data = createReceiptSchema.parse(req.body);
 
     const receipt = await sql`
@@ -156,7 +249,8 @@ export const createReceipt = async (req: AuthenticatedRequest, res: Response) =>
         user_id, image_url, status, original_filename, vendor_name, transaction_date,
         subtotal, tax, total, currency, suggested_category,
         description, document_type, tax_treatment, tax_rate,
-        publish_target, is_paid, payment_account_id, qb_account_id
+        publish_target, is_paid, payment_account_id, qb_account_id,
+        organization_id, uploaded_by, paid_by
       )
       VALUES (
         ${req.userId}, ${data.imageUrl}, ${data.status}, ${data.originalFilename || null},
@@ -166,12 +260,24 @@ export const createReceipt = async (req: AuthenticatedRequest, res: Response) =>
         ${data.description || null}, ${data.documentType || null},
         ${data.taxTreatment || null}, ${data.taxRate || null},
         ${data.publishTarget || null}, ${data.isPaid || false},
-        ${data.paymentAccountId || null}, ${data.qbAccountId || null}
+        ${data.paymentAccountId || null}, ${data.qbAccountId || null},
+        ${req.organizationId || null}, ${req.userId}, ${data.paidBy || null}
       )
       RETURNING *
     `;
 
     console.log('Receipt created:', receipt[0].id);
+
+    logAuditEvent({
+      organizationId: req.organizationId,
+      userId: req.userId,
+      action: 'receipt.upload',
+      resourceType: 'receipt',
+      resourceId: receipt[0].id,
+      details: { vendorName: data.vendorName, filename: data.originalFilename },
+      ipAddress: req.ip,
+    });
+
     res.status(201).json(receipt[0]);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -195,10 +301,18 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
     const data = updateReceiptSchema.parse(req.body);
 
     // Get current receipt first to merge with updates
-    const currentReceipts = await sql`
-      SELECT * FROM receipts 
-      WHERE id = ${id} AND user_id = ${req.userId}
-    `;
+    let currentReceipts;
+    if (req.organizationId) {
+      currentReceipts = await sql`
+        SELECT * FROM receipts
+        WHERE id = ${id} AND organization_id = ${req.organizationId}
+      `;
+    } else {
+      currentReceipts = await sql`
+        SELECT * FROM receipts
+        WHERE id = ${id} AND user_id = ${req.userId}
+      `;
+    }
 
     if (currentReceipts.length === 0) {
       return res.status(404).json({ error: 'Receipt not found' });
@@ -206,10 +320,37 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
 
     const current = currentReceipts[0];
 
+    // Auto-apply category rule if vendor name is being set and no category is explicitly provided
+    let autoQbAccountId: string | null = null;
+    let autoRuleId: string | null = null;
+    const vendorName = data.vendorName !== undefined ? data.vendorName : current.vendor_name;
+    const hasExplicitCategory = data.qbAccountId !== undefined && data.qbAccountId !== null;
+    const hasExistingCategory = current.qb_account_id !== null;
+
+    if (vendorName && !hasExplicitCategory && !hasExistingCategory) {
+      try {
+        const rule = await matchRule(req.userId!, vendorName);
+        if (rule && rule.qb_account_id) {
+          autoQbAccountId = rule.qb_account_id;
+          autoRuleId = rule.id;
+          await incrementRuleApplied(rule.id);
+          console.log(`Auto-categorized receipt ${id}: "${vendorName}" → ${rule.category_name} (rule ${rule.id})`);
+        }
+      } catch (err) {
+        console.error('Auto-categorization failed (non-fatal):', err);
+      }
+    }
+
+    // Determine final qb_account_id and auto_categorized flag
+    const finalQbAccountId = hasExplicitCategory
+      ? data.qbAccountId
+      : (autoQbAccountId || current.qb_account_id);
+    const isAutoCategorized = autoQbAccountId !== null;
+
     // Update with merged values
     const receipt = await sql`
       UPDATE receipts
-      SET 
+      SET
         status = ${data.status !== undefined ? data.status : current.status},
         vendor_name = ${data.vendorName !== undefined ? data.vendorName : current.vendor_name},
         transaction_date = ${data.transactionDate !== undefined ? data.transactionDate : current.transaction_date},
@@ -225,10 +366,23 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
         publish_target = ${data.publishTarget !== undefined ? data.publishTarget : current.publish_target},
         is_paid = ${data.isPaid !== undefined ? data.isPaid : current.is_paid},
         payment_account_id = ${data.paymentAccountId !== undefined ? data.paymentAccountId : current.payment_account_id},
-        qb_account_id = ${data.qbAccountId !== undefined ? data.qbAccountId : current.qb_account_id}
-      WHERE id = ${id} AND user_id = ${req.userId}
+        qb_account_id = ${finalQbAccountId},
+        paid_by = ${data.paidBy !== undefined ? data.paidBy : current.paid_by},
+        auto_categorized = ${isAutoCategorized || current.auto_categorized || false},
+        auto_categorized_rule_id = ${autoRuleId || current.auto_categorized_rule_id || null}
+      WHERE id = ${id}
       RETURNING *
     `;
+
+    logAuditEvent({
+      organizationId: req.organizationId,
+      userId: req.userId,
+      action: 'receipt.update',
+      resourceType: 'receipt',
+      resourceId: id,
+      details: { fields: Object.keys(data).filter(k => (data as any)[k] !== undefined) },
+      ipAddress: req.ip,
+    });
 
     res.json(receipt[0]);
   } catch (error) {
@@ -244,15 +398,33 @@ export const deleteReceipt = async (req: AuthenticatedRequest, res: Response) =>
   try {
     const { id } = req.params;
 
-    const result = await sql`
-      DELETE FROM receipts
-      WHERE id = ${id} AND user_id = ${req.userId}
-      RETURNING id
-    `;
+    let result;
+    if (req.organizationId) {
+      result = await sql`
+        DELETE FROM receipts
+        WHERE id = ${id} AND organization_id = ${req.organizationId}
+        RETURNING id
+      `;
+    } else {
+      result = await sql`
+        DELETE FROM receipts
+        WHERE id = ${id} AND user_id = ${req.userId}
+        RETURNING id
+      `;
+    }
 
     if (result.length === 0) {
       return res.status(404).json({ error: 'Receipt not found' });
     }
+
+    logAuditEvent({
+      organizationId: req.organizationId,
+      userId: req.userId,
+      action: 'receipt.delete',
+      resourceType: 'receipt',
+      resourceId: id,
+      ipAddress: req.ip,
+    });
 
     res.json({ message: 'Receipt deleted successfully' });
   } catch (error) {
@@ -304,15 +476,16 @@ const checkDuplicatesSchema = z.object({
 export const checkDuplicates = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const data = checkDuplicatesSchema.parse(req.body);
-    
+
     const results = await Promise.all(
       data.files.map(async (file) => {
         const duplicateCheck = await checkForDuplicate(
           req.userId!,
           file.filename,
-          file.transactionDetails
+          file.transactionDetails,
+          req.organizationId
         );
-        
+
         return {
           filename: file.filename,
           ...duplicateCheck,
@@ -335,4 +508,3 @@ export const checkDuplicates = async (req: AuthenticatedRequest, res: Response) 
     res.status(500).json(detailedError);
   }
 };
-

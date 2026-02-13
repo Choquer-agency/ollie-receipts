@@ -15,6 +15,7 @@ import {
   publishReceiptToQuickBooks,
   getCompanyInfo,
 } from '../services/qboApiService.js';
+import { logAuditEvent } from '../services/auditService.js';
 import { sql } from '../db/index.js';
 import { z } from 'zod';
 
@@ -23,9 +24,11 @@ import { z } from 'zod';
  */
 export const getAuthUrl = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    // Pass user ID to encode in state parameter
-    // Note: req.userId is already the internal database UUID
-    const authUrl = getAuthorizationUrl(req.userId);
+    // Encode both user ID and org ID in state parameter
+    const statePayload = req.organizationId
+      ? `${req.userId}_org_${req.organizationId}`
+      : req.userId;
+    const authUrl = getAuthorizationUrl(statePayload);
     res.json({ authUrl });
   } catch (error) {
     console.error('Error generating auth URL:', error);
@@ -81,8 +84,20 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
       `);
     }
     
-    // Extract user ID from state parameter
-    const userId = extractUserIdFromState(state as string);
+    // Extract user ID (and optionally org ID) from state parameter
+    const statePayload = extractUserIdFromState(state as string);
+    let userId: string | null = null;
+    let organizationId: string | null = null;
+
+    if (statePayload) {
+      const orgMatch = statePayload.match(/^(.+)_org_(.+)$/);
+      if (orgMatch) {
+        userId = orgMatch[1];
+        organizationId = orgMatch[2];
+      } else {
+        userId = statePayload;
+      }
+    }
     
     if (!userId) {
       console.error('❌ Could not extract user ID from state:', state);
@@ -124,22 +139,25 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
     await storeConnection(
       userId,
       realmId as string,
-      tokens
+      tokens,
+      undefined,
+      organizationId || undefined
     );
     console.log('✓ Connection stored');
-    
+
     // Try to get and update company name
     let companyName = '';
     try {
       const companyInfo = await getCompanyInfo(userId);
       companyName = companyInfo.CompanyName;
       console.log('✓ Company name retrieved:', companyName);
-      
+
       await storeConnection(
         userId,
         realmId as string,
         tokens,
-        companyName
+        companyName,
+        organizationId || undefined
       );
     } catch (error) {
       console.error('⚠ Error fetching company info (non-fatal):', error);
@@ -147,7 +165,14 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
     }
     
     console.log('✅ QuickBooks connected successfully for user:', userId);
-    
+
+    logAuditEvent({
+      organizationId: organizationId || undefined,
+      userId,
+      action: 'qbo.connect',
+      details: { companyName },
+    });
+
     // Send HTML that closes popup and notifies parent window
     res.send(`
       <html>
@@ -201,8 +226,7 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
  */
 export const getConnectionStatus = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    // req.userId is already the internal database ID
-    const connection = await getConnection(req.userId!);
+    const connection = await getConnection(req.userId!, req.organizationId);
 
     if (!connection) {
       return res.json({
@@ -211,7 +235,7 @@ export const getConnectionStatus = async (req: AuthenticatedRequest, res: Respon
     }
 
     // Validate that tokens are actually usable (attempt refresh if expired)
-    const validToken = await getValidAccessToken(req.userId!);
+    const validToken = await getValidAccessToken(req.userId!, req.organizationId);
     if (!validToken) {
       console.warn(`⚠ QBO connection exists for user ${req.userId} but tokens are invalid/expired`);
       return res.json({
@@ -238,12 +262,19 @@ export const getConnectionStatus = async (req: AuthenticatedRequest, res: Respon
  */
 export const disconnect = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const success = await revokeConnection(req.userId!);
-    
+    const success = await revokeConnection(req.userId!, req.organizationId);
+
     if (!success) {
       return res.status(404).json({ error: 'No connection found' });
     }
-    
+
+    logAuditEvent({
+      organizationId: req.organizationId,
+      userId: req.userId,
+      action: 'qbo.disconnect',
+      ipAddress: req.ip,
+    });
+
     res.json({ message: 'Successfully disconnected from QuickBooks' });
   } catch (error) {
     console.error('Error disconnecting:', error);
@@ -312,26 +343,34 @@ const publishReceiptSchema = z.object({
 export const publishReceipt = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const data = publishReceiptSchema.parse(req.body);
-    
-    // Get receipt from database
-    const receipts = await sql`
-      SELECT * FROM receipts
-      WHERE id = ${data.receiptId} AND user_id = ${req.userId}
-    `;
-    
+
+    // Get receipt from database (org-aware)
+    let receipts;
+    if (req.organizationId) {
+      receipts = await sql`
+        SELECT * FROM receipts
+        WHERE id = ${data.receiptId} AND organization_id = ${req.organizationId}
+      `;
+    } else {
+      receipts = await sql`
+        SELECT * FROM receipts
+        WHERE id = ${data.receiptId} AND user_id = ${req.userId}
+      `;
+    }
+
     if (receipts.length === 0) {
       return res.status(404).json({ error: 'Receipt not found' });
     }
-    
+
     const receipt = receipts[0];
-    
+
     // Validate receipt has required data
     if (!receipt.vendor_name || !receipt.transaction_date || !receipt.total) {
-      return res.status(400).json({ 
-        error: 'Receipt is missing required data (vendor, date, or total)' 
+      return res.status(400).json({
+        error: 'Receipt is missing required data (vendor, date, or total)'
       });
     }
-    
+
     // Publish to QuickBooks
     const result = await publishReceiptToQuickBooks(req.userId!, {
       vendorName: receipt.vendor_name,
@@ -344,18 +383,29 @@ export const publishReceipt = async (req: AuthenticatedRequest, res: Response) =
       publishTarget: receipt.publish_target || 'Expense',
       description: receipt.description,
       imageUrl: receipt.image_url,
-    });
-    
+      paidBy: receipt.paid_by,
+    }, req.organizationId);
+
     // Update receipt with QuickBooks transaction ID
     await sql`
       UPDATE receipts
-      SET 
+      SET
         qb_transaction_id = ${result.transactionId},
         qb_account_id = ${data.expenseAccountId},
         status = 'published'
       WHERE id = ${data.receiptId}
     `;
-    
+
+    logAuditEvent({
+      organizationId: req.organizationId,
+      userId: req.userId,
+      action: 'receipt.publish',
+      resourceType: 'receipt',
+      resourceId: data.receiptId,
+      details: { vendorName: receipt.vendor_name, total: receipt.total, transactionId: result.transactionId },
+      ipAddress: req.ip,
+    });
+
     res.json({
       success: true,
       transactionId: result.transactionId,
@@ -363,14 +413,14 @@ export const publishReceipt = async (req: AuthenticatedRequest, res: Response) =
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ 
-        error: 'Invalid request data', 
-        details: error.errors 
+      return res.status(400).json({
+        error: 'Invalid request data',
+        details: error.errors
       });
     }
-    
+
     console.error('Error publishing receipt:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to publish receipt to QuickBooks',
       details: error instanceof Error ? error.message : 'Unknown error'
     });

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, AlertCircle, Calendar, Link as LinkIcon, Calculator, Percent, Info } from 'lucide-react';
-import { Receipt, ReceiptStatus, QuickBooksAccount, PaymentAccount, TaxTreatment } from '../types';
+import { ArrowLeft, AlertCircle, Calendar, Link as LinkIcon, Calculator, Percent, Info, Zap, X } from 'lucide-react';
+import { Receipt, ReceiptStatus, QuickBooksAccount, PaymentAccount, TaxTreatment, CachedCategory, OrgMember } from '../types';
 import { fetchAccounts, fetchPaymentAccounts, publishReceipt, isQBOConnectionError } from '../services/qboService';
+import { categoryRulesApi, orgApi } from '../services/apiService';
 import StatusBadge from './StatusBadge';
 
 interface ReceiptReviewProps {
@@ -9,6 +10,10 @@ interface ReceiptReviewProps {
   onUpdate: (updated: Receipt) => void;
   onBack: () => void;
   onQboConnectionError?: () => void;
+  cachedCategories?: CachedCategory[];
+  onRuleCreated?: () => Promise<void>;
+  canPublish?: boolean;
+  isInOrg?: boolean;
 }
 
 interface InputGroupProps {
@@ -58,7 +63,7 @@ const formatDateForInput = (dateString: string | undefined): string => {
   }
 };
 
-const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack, onQboConnectionError }) => {
+const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack, onQboConnectionError, cachedCategories, onRuleCreated, canPublish = true, isInOrg = false }) => {
   // Debug: Log the receipt prop to see what data we're receiving
   console.log('ReceiptReview received receipt:', receipt);
   console.log('Receipt total:', receipt.total, 'Receipt tax:', receipt.tax, 'Receipt tax_rate:', receipt.tax_rate);
@@ -101,21 +106,44 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
   
   const [expenseAccounts, setExpenseAccounts] = useState<QuickBooksAccount[]>([]);
   const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>([]);
-  
+  const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
+
   const [isPublishing, setIsPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rulePrompt, setRulePrompt] = useState<{
+    vendorName: string;
+    categoryName: string;
+    qbAccountId: string;
+    receiptId: string;
+    mode: 'create' | 'update';
+    existingRuleId?: string;
+  } | null>(null);
+  const [isCreatingRule, setIsCreatingRule] = useState(false);
 
   useEffect(() => {
-    Promise.all([fetchAccounts(), fetchPaymentAccounts()])
-      .then(([expenses, payments]) => {
-        setExpenseAccounts(expenses);
+    const loadAccounts = async () => {
+      try {
+        // Use cached categories for expense accounts when available
+        if (cachedCategories && cachedCategories.length > 0) {
+          const mapped: QuickBooksAccount[] = cachedCategories.map(cat => ({
+            id: cat.id,
+            name: cat.name,
+            type: cat.type,
+          }));
+          setExpenseAccounts(mapped);
+        } else {
+          const expenses = await fetchAccounts();
+          setExpenseAccounts(expenses);
+        }
+
+        // Payment accounts still require a live fetch
+        const payments = await fetchPaymentAccounts();
         setPaymentAccounts(payments);
-        
+
         if (!formData.payment_account_id && payments.length > 0) {
           setFormData(prev => ({ ...prev, payment_account_id: payments.find(p => p.type === 'Credit Card')?.id || payments[0].id }));
         }
-      })
-      .catch(err => {
+      } catch (err: any) {
         console.error('Error fetching QuickBooks accounts:', err);
         const isConnectionError = isQBOConnectionError(err);
         const is500 = err.response?.status === 500;
@@ -127,8 +155,19 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
         } else {
           setError('Failed to load QuickBooks accounts. Please try again.');
         }
-      });
+      }
+    };
+    loadAccounts();
   }, []);
+
+  // Load org members for "Paid by" dropdown
+  useEffect(() => {
+    if (isInOrg) {
+      orgApi.getMembers()
+        .then(members => setOrgMembers(members))
+        .catch(err => console.error('Error fetching org members:', err));
+    }
+  }, [isInOrg]);
 
   const calculateTax = useCallback((total: number, rate: number, treatment: TaxTreatment) => {
     if (rate <= 0 || treatment === 'No Tax') return 0;
@@ -294,14 +333,17 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     try {
       const selectedPaymentAccount = paymentAccounts.find(a => a.id === formData.payment_account_id);
       const paymentAccountType = selectedPaymentAccount?.type as 'Bank' | 'Credit Card' | undefined;
+      const selectedAccount = expenseAccounts.find(a => a.id === formData.qb_account_id);
       const qbTxnId = await publishReceipt(receipt, formData.qb_account_id, formData.payment_account_id, paymentAccountType);
-      
+
       // Create a properly formatted receipt object
       const publishedReceipt = {
         ...receipt,
         ...formData,
         qb_transaction_id: qbTxnId,
         status: ReceiptStatus.PUBLISHED,
+        // Update category to reflect the actual selected account name (strip "ID - " prefix)
+        suggested_category: selectedAccount?.name?.replace(/^\d+\s*-\s*/, '') || formData.suggested_category,
         // Ensure numeric fields are numbers
         total: formData.total !== undefined ? parseFloat(String(formData.total)) : undefined,
         tax: formData.tax !== undefined ? parseFloat(String(formData.tax)) : undefined,
@@ -310,12 +352,77 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
       } as Receipt;
       
       onUpdate(publishedReceipt);
+
+      // Check if we should prompt to create or update a category rule
+      const vendorName = formData.vendor_name?.trim();
+      const categoryName = selectedAccount?.name?.replace(/^\d+\s*-\s*/, '') || '';
+      if (vendorName && formData.qb_account_id && onRuleCreated) {
+        try {
+          const existingMatch = await categoryRulesApi.match(vendorName);
+          if (!existingMatch) {
+            // No rule exists — prompt to create one
+            setRulePrompt({
+              vendorName,
+              categoryName,
+              qbAccountId: formData.qb_account_id,
+              receiptId: receipt.id,
+              mode: 'create',
+            });
+            return;
+          } else if (existingMatch.qbAccountId !== formData.qb_account_id) {
+            // Rule exists but user picked a different category — prompt to update
+            setRulePrompt({
+              vendorName,
+              categoryName,
+              qbAccountId: formData.qb_account_id,
+              receiptId: receipt.id,
+              mode: 'update',
+              existingRuleId: existingMatch.ruleId,
+            });
+            return;
+          }
+        } catch {
+          // Non-fatal: if match check fails, just go back
+        }
+      }
+
       onBack();
     } catch (err) {
       setError("Failed to publish to QuickBooks. Please try again.");
     } finally {
       setIsPublishing(false);
     }
+  };
+
+  const handleCreateRule = async () => {
+    if (!rulePrompt) return;
+    setIsCreatingRule(true);
+    try {
+      if (rulePrompt.mode === 'update' && rulePrompt.existingRuleId) {
+        await categoryRulesApi.update(rulePrompt.existingRuleId, {
+          qbCategoryId: rulePrompt.qbAccountId,
+        });
+      } else {
+        await categoryRulesApi.create({
+          vendorPattern: rulePrompt.vendorName,
+          qbCategoryId: rulePrompt.qbAccountId,
+          matchType: 'exact',
+          receiptId: rulePrompt.receiptId,
+        });
+      }
+      if (onRuleCreated) await onRuleCreated();
+    } catch (err) {
+      console.error('Failed to save category rule:', err);
+    } finally {
+      setIsCreatingRule(false);
+      setRulePrompt(null);
+      onBack();
+    }
+  };
+
+  const handleDismissRulePrompt = () => {
+    setRulePrompt(null);
+    onBack();
   };
 
   const inputBaseStyle: React.CSSProperties = {
@@ -394,7 +501,8 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
             <StatusBadge status={formData.status || ReceiptStatus.UPLOADED} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button 
+            {canPublish && (
+              <button
                 onClick={handleSave}
                 style={{
                   ...buttonBaseStyle,
@@ -402,11 +510,12 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                   backgroundColor: 'var(--background-elevated)',
                   border: '1px solid var(--border-strong)',
                 }}
-            >
+              >
                 Save
-            </button>
-            {receipt.status !== ReceiptStatus.PUBLISHED && (
-                <button 
+              </button>
+            )}
+            {canPublish && receipt.status !== ReceiptStatus.PUBLISHED && (
+                <button
                     onClick={handlePublish}
                     disabled={isPublishing}
                     style={{
@@ -618,11 +727,24 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                            AI: {formData.suggested_category.slice(0, 15)}...
                         </div>
                      )}
+                     {receipt.auto_categorized && formData.qb_account_id && (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          marginTop: '6px',
+                          fontSize: 'var(--font-size-tiny)',
+                          color: 'var(--primary)',
+                        }}>
+                          <Zap size={12} />
+                          <span>Auto-categorized by rule</span>
+                        </div>
+                     )}
                  </div>
               </InputGroup>
 
               <InputGroup label="Description">
-                 <textarea 
+                 <textarea
                     name="description"
                     value={formData.description || ''}
                     onChange={handleChange}
@@ -911,8 +1033,33 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                 </div>
               </InputGroup>
 
+              <InputGroup label="Paid by">
+                {isInOrg && orgMembers.length > 0 ? (
+                  <select
+                    name="paid_by"
+                    value={formData.paid_by || ''}
+                    onChange={handleChange}
+                    style={inputBaseStyle}
+                  >
+                    <option value="">Select team member...</option>
+                    {orgMembers.map(m => (
+                      <option key={m.id} value={m.name}>{m.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    name="paid_by"
+                    value={formData.paid_by || ''}
+                    onChange={handleChange}
+                    placeholder="Who paid for this?"
+                    style={inputBaseStyle}
+                  />
+                )}
+              </InputGroup>
+
               <InputGroup label="Publish to">
-                 <select 
+                 <select
                     name="publish_target"
                     value={formData.publish_target}
                     onChange={(e) => {
@@ -945,6 +1092,66 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
           </div>
         </div>
       </div>
+
+      {/* Rule creation prompt banner */}
+      {rulePrompt && (
+        <div style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          padding: '16px 24px',
+          backgroundColor: 'var(--background-elevated)',
+          borderTop: '1px solid var(--border-default)',
+          boxShadow: 'var(--shadow-overlay)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          zIndex: 20,
+        }}>
+          <Zap size={18} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+          <div style={{ flex: 1, fontSize: 'var(--font-size-body)', color: 'var(--text-primary)' }}>
+            {rulePrompt.mode === 'update'
+              ? <>Update rule for <strong>{rulePrompt.vendorName}</strong> to <strong>{rulePrompt.categoryName}</strong>?</>
+              : <>Always categorize <strong>{rulePrompt.vendorName}</strong> as <strong>{rulePrompt.categoryName}</strong>?</>
+            }
+          </div>
+          <button
+            onClick={handleCreateRule}
+            disabled={isCreatingRule}
+            style={{
+              padding: 'var(--button-padding-sm)',
+              fontSize: 'var(--font-size-small)',
+              fontWeight: 'var(--font-weight-semibold)',
+              fontFamily: 'var(--font-body)',
+              borderRadius: 'var(--radius-md)',
+              border: 'none',
+              backgroundColor: 'var(--primary)',
+              color: 'white',
+              cursor: 'pointer',
+              transition: 'var(--transition-default)',
+              opacity: isCreatingRule ? 0.7 : 1,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {isCreatingRule ? 'Saving...' : (rulePrompt.mode === 'update' ? 'Update rule' : 'Create rule')}
+          </button>
+          <button
+            onClick={handleDismissRulePrompt}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--text-tertiary)',
+              cursor: 'pointer',
+              padding: '4px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

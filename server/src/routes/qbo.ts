@@ -1,5 +1,5 @@
 import express from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireOrgRole } from '../middleware/auth.js';
 import {
   getAuthUrl,
   handleCallback,
@@ -13,15 +13,14 @@ import {
 const router = express.Router();
 
 // OAuth routes
-router.get('/auth-url', requireAuth, getAuthUrl);
+router.get('/auth-url', requireAuth, requireOrgRole('org:admin'), getAuthUrl);
 router.get('/callback', handleCallback); // Uses Clerk middleware from server, not requireAuth
 router.get('/status', requireAuth, getConnectionStatus);
-router.delete('/disconnect', requireAuth, disconnect);
+router.delete('/disconnect', requireAuth, requireOrgRole('org:admin'), disconnect);
 
-// API routes
-router.get('/accounts', requireAuth, getExpenseAccounts);
-router.get('/payment-accounts', requireAuth, getPaymentAccounts);
-router.post('/publish', requireAuth, publishReceipt);
+// API routes - admin + bookkeeper can access accounts and publish
+router.get('/accounts', requireAuth, requireOrgRole('org:admin', 'org:bookkeeper'), getExpenseAccounts);
+router.get('/payment-accounts', requireAuth, requireOrgRole('org:admin', 'org:bookkeeper'), getPaymentAccounts);
+router.post('/publish', requireAuth, requireOrgRole('org:admin', 'org:bookkeeper'), publishReceipt);
 
 export default router;
-

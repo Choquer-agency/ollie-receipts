@@ -6,6 +6,9 @@ import { fileURLToPath } from 'url';
 import { clerkMiddleware } from '@clerk/express';
 import receiptRoutes from './routes/receipts.js';
 import qboRoutes from './routes/qbo.js';
+import categoryRoutes from './routes/categories.js';
+import categoryRulesRoutes from './routes/categoryRules.js';
+import orgRoutes from './routes/org.js';
 import { validateQBConfig } from './config/quickbooks.js';
 import { startQuickBooksTokenRefreshJob } from './jobs/qboTokenRefresh.js';
 
@@ -40,6 +43,9 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/receipts', receiptRoutes);
 app.use('/api/qbo', qboRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/category-rules', categoryRulesRoutes);
+app.use('/api/org', orgRoutes);
 
 // Serve static files from frontend build in production
 if (process.env.NODE_ENV === 'production') {
