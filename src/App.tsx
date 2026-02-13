@@ -16,32 +16,12 @@ import { receiptApi, categoryApi, categoryRulesApi, setAuthToken, setTokenRefres
 type ViewState = 'list' | 'review';
 type TabState = 'new' | 'processing' | 'posted' | 'account' | 'team' | 'audit';
 
+// Outer App: handles Clerk loading + auth gating only.
+// useOrganization() is NOT called here — it moves to SignedInApp
+// so it never runs during OAuth callback processing.
 const App: React.FC = () => {
-  const { getToken, isLoaded, isSignedIn } = useAuth();
-  const { organization, membership } = useOrganization();
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [view, setView] = useState<ViewState>('list');
-  const [activeTab, setActiveTab] = useState<TabState>('new');
-  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
-  const [isQboConnected, setIsQboConnected] = useState(false);
-  const [qboConnectionNeedsRefresh, setQboConnectionNeedsRefresh] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [cachedCategories, setCachedCategories] = useState<CachedCategory[]>([]);
-  const [isSyncingCategories, setIsSyncingCategories] = useState(false);
-  const [categoryRules, setCategoryRules] = useState<CategoryRule[]>([]);
-
-  // Derive org context and permissions
-  const isInOrg = !!organization;
-  const orgRole = (membership?.role as OrgRole) || null;
-  const isAdmin = orgRole === 'org:admin';
-  const isBookkeeper = orgRole === 'org:bookkeeper';
-  const isEmployee = orgRole === 'org:member';
-  const canReview = !isInOrg || isAdmin || isBookkeeper;
-  const canPublish = !isInOrg || isAdmin || isBookkeeper;
-  const canManageTeam = isInOrg && isAdmin;
-  const canViewAudit = isInOrg && isAdmin;
-  const canConnectQBO = !isInOrg || isAdmin;
 
   // Close auth modal when user signs in
   useEffect(() => {
@@ -63,14 +43,198 @@ const App: React.FC = () => {
     });
   }, [getToken]);
 
-  // Reload data when org context changes
+  // Show loading while Clerk initializes (including OAuth callback processing)
+  if (!isLoaded) {
+    return (
+      <div style={{ minHeight: '100vh' }}>
+        <nav style={{
+          backgroundColor: 'var(--background-elevated)',
+          borderBottom: '1px solid var(--border-default)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 50,
+        }}>
+          <div style={{
+            maxWidth: '1280px',
+            margin: '0 auto',
+            padding: '0 16px',
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              height: '64px',
+              alignItems: 'center',
+            }}>
+              <img
+                src="/logo.svg"
+                alt="Ollie Receipts"
+                style={{ height: '24px', width: 'auto' }}
+              />
+            </div>
+          </div>
+        </nav>
+        <main style={{ maxWidth: '1280px', margin: '0 auto', padding: '24px 16px' }}>
+          <div style={{ textAlign: 'center', padding: '48px' }}>
+            <p style={{ color: 'var(--text-secondary)' }}>Loading...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Not signed in: show welcome page
+  if (!isSignedIn) {
+    return (
+      <div style={{ minHeight: '100vh', paddingBottom: '48px' }}>
+        <nav style={{
+          backgroundColor: 'var(--background-elevated)',
+          borderBottom: '1px solid var(--border-default)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 50,
+        }}>
+          <div style={{
+            maxWidth: '1280px',
+            margin: '0 auto',
+            padding: '0 16px',
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              height: '64px',
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}>
+                <img
+                  src="/logo.svg"
+                  alt="Ollie Receipts"
+                  style={{ height: '24px', width: 'auto' }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <button
+                  onClick={() => setShowAuthModal(true)}
+                  style={{
+                    fontSize: 'var(--font-size-body)',
+                    fontWeight: 'var(--font-weight-semibold)',
+                    color: 'white',
+                    backgroundColor: 'var(--primary)',
+                    padding: '8px 16px',
+                    borderRadius: 'var(--radius-md)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'var(--transition-default)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--primary-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--primary)';
+                  }}
+                >
+                  Sign in
+                </button>
+              </div>
+            </div>
+          </div>
+        </nav>
+
+        <main style={{
+          maxWidth: '1280px',
+          margin: '0 auto',
+          padding: '24px 16px',
+        }}>
+          <div style={{
+            textAlign: 'center',
+            padding: '48px 16px',
+          }}>
+            <h2 style={{
+              fontSize: 'var(--font-size-h2)',
+              fontWeight: 'var(--font-weight-bold)',
+              fontFamily: 'var(--font-heading)',
+              color: 'var(--text-primary)',
+              marginBottom: '16px',
+            }}>
+              Welcome to Ollie
+            </h2>
+            <p style={{
+              fontSize: 'var(--font-size-body)',
+              color: 'var(--text-secondary)',
+              marginBottom: '24px',
+            }}>
+              Please sign in to manage your receipts
+            </p>
+            <button
+              onClick={() => setShowAuthModal(true)}
+              style={{
+                fontSize: 'var(--font-size-body)',
+                fontWeight: 'var(--font-weight-semibold)',
+                color: 'white',
+                backgroundColor: 'var(--primary)',
+                padding: '12px 24px',
+                borderRadius: 'var(--radius-md)',
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'var(--transition-default)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--primary-hover)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--primary)';
+              }}
+            >
+              Sign in to get started
+            </button>
+          </div>
+        </main>
+
+        <AuthModal
+          isOpen={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+        />
+      </div>
+    );
+  }
+
+  // Signed in: render the full dashboard (org hooks are safe to call here)
+  return <SignedInApp />;
+};
+
+// Inner component: only rendered when isLoaded && isSignedIn.
+// Safe to call useOrganization() here since the user is authenticated.
+const SignedInApp: React.FC = () => {
+  const { getToken } = useAuth();
+  const { organization, membership } = useOrganization();
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [view, setView] = useState<ViewState>('list');
+  const [activeTab, setActiveTab] = useState<TabState>('new');
+  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
+  const [isQboConnected, setIsQboConnected] = useState(false);
+  const [qboConnectionNeedsRefresh, setQboConnectionNeedsRefresh] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [cachedCategories, setCachedCategories] = useState<CachedCategory[]>([]);
+  const [isSyncingCategories, setIsSyncingCategories] = useState(false);
+  const [categoryRules, setCategoryRules] = useState<CategoryRule[]>([]);
+
+  // Derive org context and permissions
+  const isInOrg = !!organization;
+  const orgRole = (membership?.role as OrgRole) || null;
+  const isAdmin = orgRole === 'org:admin';
+  const isBookkeeper = orgRole === 'org:bookkeeper';
+  const isEmployee = orgRole === 'org:member';
+  const canReview = !isInOrg || isAdmin || isBookkeeper;
+  const canPublish = !isInOrg || isAdmin || isBookkeeper;
+  const canManageTeam = isInOrg && isAdmin;
+  const canViewAudit = isInOrg && isAdmin;
+  const canConnectQBO = !isInOrg || isAdmin;
+
+  // Load data on mount and when org context changes
   useEffect(() => {
     const loadReceipts = async () => {
-      if (!isLoaded || !isSignedIn) {
-        setLoading(false);
-        return;
-      }
-
       try {
         const token = await getToken();
         if (token) {
@@ -107,7 +271,7 @@ const App: React.FC = () => {
     };
 
     loadReceipts();
-  }, [isLoaded, isSignedIn, getToken, organization?.id]);
+  }, [getToken, organization?.id]);
 
   const handleUploadComplete = (receipt: Receipt) => {
     setReceipts(prev => {
@@ -398,38 +562,11 @@ const App: React.FC = () => {
               )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-               {!isSignedIn ? (
-                 <button
-                   onClick={() => setShowAuthModal(true)}
-                   style={{
-                     fontSize: 'var(--font-size-body)',
-                     fontWeight: 'var(--font-weight-semibold)',
-                     color: 'white',
-                     backgroundColor: 'var(--primary)',
-                     padding: '8px 16px',
-                     borderRadius: 'var(--radius-md)',
-                     border: 'none',
-                     cursor: 'pointer',
-                     transition: 'var(--transition-default)',
-                   }}
-                   onMouseEnter={(e) => {
-                     e.currentTarget.style.backgroundColor = 'var(--primary-hover)';
-                   }}
-                   onMouseLeave={(e) => {
-                     e.currentTarget.style.backgroundColor = 'var(--primary)';
-                   }}
-                 >
-                   Sign in
-                 </button>
-               ) : (
-                 <>
-                   {renderQboButton()}
-                   <UserMenu onDisconnectQBO={() => {
-                     setIsQboConnected(false);
-                     setQboConnectionNeedsRefresh(false);
-                   }} />
-                 </>
-               )}
+              {renderQboButton()}
+              <UserMenu onDisconnectQBO={() => {
+                setIsQboConnected(false);
+                setQboConnectionNeedsRefresh(false);
+              }} />
             </div>
           </div>
         </div>
@@ -441,51 +578,7 @@ const App: React.FC = () => {
         margin: '0 auto',
         padding: '24px 16px',
       }}>
-        {!isSignedIn ? (
-          <div style={{
-            textAlign: 'center',
-            padding: '48px 16px',
-          }}>
-            <h2 style={{
-              fontSize: 'var(--font-size-h2)',
-              fontWeight: 'var(--font-weight-bold)',
-              fontFamily: 'var(--font-heading)',
-              color: 'var(--text-primary)',
-              marginBottom: '16px',
-            }}>
-              Welcome to Ollie
-            </h2>
-            <p style={{
-              fontSize: 'var(--font-size-body)',
-              color: 'var(--text-secondary)',
-              marginBottom: '24px',
-            }}>
-              Please sign in to manage your receipts
-            </p>
-            <button
-              onClick={() => setShowAuthModal(true)}
-              style={{
-                fontSize: 'var(--font-size-body)',
-                fontWeight: 'var(--font-weight-semibold)',
-                color: 'white',
-                backgroundColor: 'var(--primary)',
-                padding: '12px 24px',
-                borderRadius: 'var(--radius-md)',
-                border: 'none',
-                cursor: 'pointer',
-                transition: 'var(--transition-default)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'var(--primary-hover)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'var(--primary)';
-              }}
-            >
-              Sign in to get started
-            </button>
-          </div>
-        ) : loading ? (
+        {loading ? (
           <div style={{ textAlign: 'center', padding: '48px' }}>
             <p style={{ color: 'var(--text-secondary)' }}>Loading...</p>
           </div>
@@ -590,12 +683,6 @@ const App: React.FC = () => {
           )
         )}
       </main>
-
-      {/* Auth Modal */}
-      <AuthModal
-        isOpen={showAuthModal}
-        onClose={() => setShowAuthModal(false)}
-      />
     </div>
   );
 };
