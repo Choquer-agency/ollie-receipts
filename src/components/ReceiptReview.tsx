@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, AlertCircle, Calendar, Link as LinkIcon, Calculator, Percent, Info, Zap, X } from 'lucide-react';
+import { ArrowLeft, AlertCircle, Calendar, Link as LinkIcon, Calculator, Percent, Info, Zap, X, Check } from 'lucide-react';
 import { Receipt, ReceiptStatus, QuickBooksAccount, PaymentAccount, TaxTreatment, CachedCategory, OrgMember } from '../types';
 import { fetchAccounts, fetchPaymentAccounts, publishReceipt, isQBOConnectionError } from '../services/qboService';
 import { categoryRulesApi, orgApi } from '../services/apiService';
@@ -266,6 +266,42 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     });
   };
 
+  const handleCategoryChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    handleChange(e);
+    setRulePrompt(null);
+
+    const selectedAccountId = e.target.value;
+    const vendorName = formData.vendor_name?.trim();
+    if (!vendorName || !selectedAccountId || !onRuleCreated) return;
+
+    const selectedAccount = expenseAccounts.find(a => a.id === selectedAccountId);
+    const categoryName = selectedAccount?.name?.replace(/^\d+\s*-\s*/, '') || '';
+
+    try {
+      const existingMatch = await categoryRulesApi.match(vendorName);
+      if (!existingMatch) {
+        setRulePrompt({
+          vendorName,
+          categoryName,
+          qbAccountId: selectedAccountId,
+          receiptId: receipt.id,
+          mode: 'create',
+        });
+      } else if (existingMatch.qbAccountId !== selectedAccountId) {
+        setRulePrompt({
+          vendorName,
+          categoryName,
+          qbAccountId: selectedAccountId,
+          receiptId: receipt.id,
+          mode: 'update',
+          existingRuleId: existingMatch.ruleId,
+        });
+      }
+    } catch {
+      // Non-fatal: if match check fails, just skip the prompt
+    }
+  };
+
   const handleTogglePaid = (checked: boolean) => {
      setFormData(prev => ({ 
        ...prev, 
@@ -352,40 +388,6 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
       } as Receipt;
       
       onUpdate(publishedReceipt);
-
-      // Check if we should prompt to create or update a category rule
-      const vendorName = formData.vendor_name?.trim();
-      const categoryName = selectedAccount?.name?.replace(/^\d+\s*-\s*/, '') || '';
-      if (vendorName && formData.qb_account_id && onRuleCreated) {
-        try {
-          const existingMatch = await categoryRulesApi.match(vendorName);
-          if (!existingMatch) {
-            // No rule exists — prompt to create one
-            setRulePrompt({
-              vendorName,
-              categoryName,
-              qbAccountId: formData.qb_account_id,
-              receiptId: receipt.id,
-              mode: 'create',
-            });
-            return;
-          } else if (existingMatch.qbAccountId !== formData.qb_account_id) {
-            // Rule exists but user picked a different category — prompt to update
-            setRulePrompt({
-              vendorName,
-              categoryName,
-              qbAccountId: formData.qb_account_id,
-              receiptId: receipt.id,
-              mode: 'update',
-              existingRuleId: existingMatch.ruleId,
-            });
-            return;
-          }
-        } catch {
-          // Non-fatal: if match check fails, just go back
-        }
-      }
-
       onBack();
     } catch (err) {
       setError("Failed to publish to QuickBooks. Please try again.");
@@ -416,13 +418,11 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     } finally {
       setIsCreatingRule(false);
       setRulePrompt(null);
-      onBack();
     }
   };
 
   const handleDismissRulePrompt = () => {
     setRulePrompt(null);
-    onBack();
   };
 
   const inputBaseStyle: React.CSSProperties = {
@@ -701,10 +701,10 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
 
               <InputGroup label="Category" required>
                  <div style={{ position: 'relative' }}>
-                     <select 
+                     <select
                         name="qb_account_id"
                         value={formData.qb_account_id || ''}
-                        onChange={handleChange}
+                        onChange={handleCategoryChange}
                         style={inputBaseStyle}
                      >
                         <option value="">Select category...</option>
@@ -727,7 +727,7 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                            AI: {formData.suggested_category.slice(0, 15)}...
                         </div>
                      )}
-                     {receipt.auto_categorized && formData.qb_account_id && (
+                     {receipt.auto_categorized && formData.qb_account_id && !rulePrompt && (
                         <div style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -738,6 +738,54 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                         }}>
                           <Zap size={12} />
                           <span>Auto-categorized by rule</span>
+                        </div>
+                     )}
+                     {rulePrompt && (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          marginTop: '6px',
+                          fontSize: 'var(--font-size-tiny)',
+                          color: 'var(--primary)',
+                        }}>
+                          <Zap size={12} />
+                          <span>
+                            {rulePrompt.mode === 'update' ? 'Update' : 'Always'}{' '}
+                            <strong>{rulePrompt.vendorName}</strong> → <strong>{rulePrompt.categoryName}</strong>
+                          </span>
+                          <button
+                            onClick={handleCreateRule}
+                            disabled={isCreatingRule}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--primary)',
+                              cursor: 'pointer',
+                              padding: '2px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              opacity: isCreatingRule ? 0.5 : 1,
+                            }}
+                            title={rulePrompt.mode === 'update' ? 'Update rule' : 'Create rule'}
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            onClick={handleDismissRulePrompt}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--text-tertiary)',
+                              cursor: 'pointer',
+                              padding: '2px',
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
+                            title="Dismiss"
+                          >
+                            <X size={14} />
+                          </button>
                         </div>
                      )}
                  </div>
@@ -1093,65 +1141,6 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
         </div>
       </div>
 
-      {/* Rule creation prompt banner */}
-      {rulePrompt && (
-        <div style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          padding: '16px 24px',
-          backgroundColor: 'var(--background-elevated)',
-          borderTop: '1px solid var(--border-default)',
-          boxShadow: 'var(--shadow-overlay)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          zIndex: 20,
-        }}>
-          <Zap size={18} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-          <div style={{ flex: 1, fontSize: 'var(--font-size-body)', color: 'var(--text-primary)' }}>
-            {rulePrompt.mode === 'update'
-              ? <>Update rule for <strong>{rulePrompt.vendorName}</strong> to <strong>{rulePrompt.categoryName}</strong>?</>
-              : <>Always categorize <strong>{rulePrompt.vendorName}</strong> as <strong>{rulePrompt.categoryName}</strong>?</>
-            }
-          </div>
-          <button
-            onClick={handleCreateRule}
-            disabled={isCreatingRule}
-            style={{
-              padding: 'var(--button-padding-sm)',
-              fontSize: 'var(--font-size-small)',
-              fontWeight: 'var(--font-weight-semibold)',
-              fontFamily: 'var(--font-body)',
-              borderRadius: 'var(--radius-md)',
-              border: 'none',
-              backgroundColor: 'var(--primary)',
-              color: 'white',
-              cursor: 'pointer',
-              transition: 'var(--transition-default)',
-              opacity: isCreatingRule ? 0.7 : 1,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {isCreatingRule ? 'Saving...' : (rulePrompt.mode === 'update' ? 'Update rule' : 'Create rule')}
-          </button>
-          <button
-            onClick={handleDismissRulePrompt}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-tertiary)',
-              cursor: 'pointer',
-              padding: '4px',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            <X size={18} />
-          </button>
-        </div>
-      )}
     </div>
   );
 };

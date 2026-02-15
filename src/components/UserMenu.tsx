@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useUser, useClerk, OrganizationSwitcher } from '@clerk/clerk-react';
-import { User, LogOut, ChevronDown, Unlink } from 'lucide-react';
+import { useUser, useClerk, useOrganization, useOrganizationList } from '@clerk/clerk-react';
+import { User, LogOut, ChevronDown, Unlink, Check, Plus, Loader2 } from 'lucide-react';
 import { disconnectQBO, checkQBOStatus } from '../services/qboService';
 
 interface UserMenuProps {
@@ -10,8 +10,15 @@ interface UserMenuProps {
 const UserMenu: React.FC<UserMenuProps> = ({ onDisconnectQBO }) => {
   const { user } = useUser();
   const { signOut } = useClerk();
+  const { organization: activeOrg } = useOrganization();
+  const { userMemberships, setActive, createOrganization } = useOrganizationList({
+    userMemberships: { infinite: true },
+  });
   const [isOpen, setIsOpen] = useState(false);
   const [isQboConnected, setIsQboConnected] = useState(false);
+  const [showCreateOrg, setShowCreateOrg] = useState(false);
+  const [newOrgName, setNewOrgName] = useState('');
+  const [creatingOrg, setCreatingOrg] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Check QB connection status when menu opens
@@ -176,29 +183,202 @@ const UserMenu: React.FC<UserMenuProps> = ({ onDisconnectQBO }) => {
             </p>
           </div>
 
-          {/* Organization Switcher */}
+          {/* Workspaces */}
           <div style={{
-            padding: '8px 12px',
+            padding: '8px',
             borderBottom: '1px solid var(--border-default)',
           }}>
-            <OrganizationSwitcher
-              hidePersonal={false}
-              afterCreateOrganizationUrl="/"
-              afterLeaveOrganizationUrl="/"
-              afterSelectOrganizationUrl="/"
-              afterSelectPersonalUrl="/"
-              appearance={{
-                elements: {
-                  rootBox: { width: '100%' },
-                  organizationSwitcherTrigger: {
-                    width: '100%',
-                    justifyContent: 'space-between',
-                    padding: '8px 0',
-                    borderRadius: '6px',
-                  },
-                },
+            <p style={{
+              fontSize: 'var(--font-size-small)',
+              fontWeight: 'var(--font-weight-medium)',
+              color: 'var(--text-tertiary)',
+              padding: '4px 8px',
+              margin: 0,
+            }}>
+              Workspaces
+            </p>
+
+            {/* Personal account */}
+            <button
+              onClick={() => {
+                setActive?.({ organization: null });
+                setIsOpen(false);
               }}
-            />
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '8px',
+                backgroundColor: !activeOrg ? 'var(--background-muted)' : 'transparent',
+                border: 'none',
+                borderRadius: 'var(--radius-md)',
+                cursor: 'pointer',
+                transition: 'var(--transition-default)',
+                fontSize: 'var(--font-size-body)',
+                color: 'var(--text-primary)',
+                textAlign: 'left',
+              }}
+              onMouseEnter={(e) => {
+                if (activeOrg) e.currentTarget.style.backgroundColor = 'var(--background-muted)';
+              }}
+              onMouseLeave={(e) => {
+                if (activeOrg) e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <span style={{ flex: 1 }}>Personal account</span>
+              {!activeOrg && <Check size={14} style={{ color: 'var(--primary)' }} />}
+            </button>
+
+            {/* Organization list */}
+            {userMemberships?.data?.map((mem: any) => {
+              const org = mem.organization;
+              const isActive = activeOrg?.id === org.id;
+              return (
+                <button
+                  key={org.id}
+                  onClick={() => {
+                    setActive?.({ organization: org.id });
+                    setIsOpen(false);
+                  }}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '8px',
+                    backgroundColor: isActive ? 'var(--background-muted)' : 'transparent',
+                    border: 'none',
+                    borderRadius: 'var(--radius-md)',
+                    cursor: 'pointer',
+                    transition: 'var(--transition-default)',
+                    fontSize: 'var(--font-size-body)',
+                    color: 'var(--text-primary)',
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) e.currentTarget.style.backgroundColor = 'var(--background-muted)';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <span style={{
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {org.name}
+                  </span>
+                  {isActive && <Check size={14} style={{ color: 'var(--primary)' }} />}
+                </button>
+              );
+            })}
+
+            {/* Create organization */}
+            {showCreateOrg ? (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!newOrgName.trim() || !createOrganization) return;
+                  setCreatingOrg(true);
+                  try {
+                    const org = await createOrganization({ name: newOrgName.trim() });
+                    setActive?.({ organization: org.id });
+                    setNewOrgName('');
+                    setShowCreateOrg(false);
+                    setIsOpen(false);
+                  } catch (err) {
+                    console.error('Failed to create organization:', err);
+                  } finally {
+                    setCreatingOrg(false);
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  gap: '6px',
+                  padding: '4px 8px',
+                  marginTop: '4px',
+                }}
+              >
+                <input
+                  type="text"
+                  placeholder="Organization name"
+                  value={newOrgName}
+                  onChange={(e) => setNewOrgName(e.target.value)}
+                  autoFocus
+                  style={{
+                    flex: 1,
+                    padding: '6px 8px',
+                    fontSize: 'var(--font-size-small)',
+                    fontFamily: 'var(--font-body)',
+                    color: 'var(--text-primary)',
+                    backgroundColor: 'var(--background-elevated)',
+                    border: '1px solid var(--border-strong)',
+                    borderRadius: 'var(--radius-md)',
+                    outline: 'none',
+                  }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-strong)'; }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setShowCreateOrg(false);
+                      setNewOrgName('');
+                    }
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={creatingOrg || !newOrgName.trim()}
+                  style={{
+                    padding: '6px 10px',
+                    fontSize: 'var(--font-size-small)',
+                    fontWeight: 'var(--font-weight-semibold)',
+                    color: 'white',
+                    backgroundColor: (creatingOrg || !newOrgName.trim()) ? 'var(--text-tertiary)' : 'var(--primary)',
+                    border: 'none',
+                    borderRadius: 'var(--radius-md)',
+                    cursor: (creatingOrg || !newOrgName.trim()) ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {creatingOrg ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : 'Create'}
+                </button>
+              </form>
+            ) : (
+              <button
+                onClick={() => setShowCreateOrg(true)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '8px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: 'pointer',
+                  transition: 'var(--transition-default)',
+                  fontSize: 'var(--font-size-body)',
+                  color: 'var(--text-secondary)',
+                  textAlign: 'left',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--background-muted)';
+                  e.currentTarget.style.color = 'var(--text-primary)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = 'var(--text-secondary)';
+                }}
+              >
+                <Plus size={14} />
+                <span>Create organization</span>
+              </button>
+            )}
           </div>
 
           {/* Menu Items */}
@@ -293,6 +473,12 @@ const UserMenu: React.FC<UserMenuProps> = ({ onDisconnectQBO }) => {
           </div>
         </div>
       )}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 };

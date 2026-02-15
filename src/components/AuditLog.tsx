@@ -2,15 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { AuditLogEntry } from '../types';
 import { orgApi } from '../services/apiService';
 
-const ACTION_LABELS: Record<string, string> = {
-  'receipt.upload': 'Uploaded a receipt',
-  'receipt.update': 'Updated a receipt',
-  'receipt.delete': 'Deleted a receipt',
-  'receipt.publish': 'Published a receipt',
-  'member.invite': 'Invited a member',
-  'member.remove': 'Removed a member',
-  'qbo.connect': 'Connected QuickBooks',
-  'qbo.disconnect': 'Disconnected QuickBooks',
+const FIELD_LABELS: Record<string, string> = {
+  vendorName: 'vendor name',
+  transactionDate: 'date',
+  subtotal: 'subtotal',
+  tax: 'tax',
+  total: 'total',
+  currency: 'currency',
+  suggestedCategory: 'category',
+  description: 'description',
+  documentType: 'document type',
+  taxTreatment: 'tax treatment',
+  taxRate: 'tax rate',
+  publishTarget: 'publish target',
+  isPaid: 'paid status',
+  paymentAccountId: 'payment account',
+  qbAccountId: 'expense account',
+  paidBy: 'paid by',
+  status: 'status',
+  imageUrl: 'image',
+  originalFilename: 'filename',
 };
 
 const ACTION_FILTERS = [
@@ -49,17 +60,59 @@ const AuditLog: React.FC = () => {
     });
   };
 
-  const getActionLabel = (action: string) => {
-    return ACTION_LABELS[action] || action;
+  const formatFieldNames = (fields?: string[]) => {
+    if (!fields || fields.length === 0) return '';
+    return fields
+      .map(f => FIELD_LABELS[f] || f)
+      .join(', ');
   };
 
-  const getDetailText = (entry: AuditLogEntry) => {
-    if (!entry.details) return '';
-    const d = entry.details;
-    if (d.vendorName) return d.vendorName;
-    if (d.companyName) return d.companyName;
-    if (d.fields) return `Fields: ${d.fields.join(', ')}`;
-    return '';
+  const getDescription = (entry: AuditLogEntry): { main: string; sub?: string } => {
+    const d = entry.details || {};
+    const vendor = d.vendorName;
+    const filename = d.filename;
+    const total = d.total != null ? `$${Number(d.total).toFixed(2)}` : null;
+
+    switch (entry.action) {
+      case 'receipt.upload': {
+        const name = vendor ? `"${vendor}"` : (filename ? `(${filename})` : '');
+        const file = vendor && filename ? ` (${filename})` : '';
+        return { main: `Uploaded receipt ${name}${file}` };
+      }
+      case 'receipt.update': {
+        const name = vendor ? `"${vendor}"` : '';
+        const fields = formatFieldNames(d.fields);
+        return {
+          main: name ? `Updated receipt ${name}` : 'Updated a receipt',
+          sub: fields || undefined,
+        };
+      }
+      case 'receipt.delete': {
+        const name = vendor ? `"${vendor}"` : '';
+        const amount = total ? ` (${total})` : '';
+        return { main: name ? `Deleted receipt ${name}${amount}` : 'Deleted a receipt' };
+      }
+      case 'receipt.publish': {
+        const name = vendor ? `"${vendor}"` : 'a receipt';
+        const target = d.publishTarget || 'Expense';
+        const amount = total ? `${total} ` : '';
+        return { main: `Published ${name} — ${amount}as ${target}` };
+      }
+      case 'qbo.connect': {
+        const company = d.companyName ? ` (${d.companyName})` : '';
+        return { main: `Connected QuickBooks${company}` };
+      }
+      case 'qbo.disconnect': {
+        const company = d.companyName ? ` (${d.companyName})` : '';
+        return { main: `Disconnected QuickBooks${company}` };
+      }
+      case 'member.invite':
+        return { main: 'Invited a member' };
+      case 'member.remove':
+        return { main: 'Removed a member' };
+      default:
+        return { main: entry.action };
+    }
   };
 
   return (
@@ -123,58 +176,58 @@ const AuditLog: React.FC = () => {
         </div>
       ) : (
         <div>
-          {entries.map((entry) => (
-            <div
-              key={entry.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '12px 24px',
-                borderBottom: '1px solid var(--border-default)',
-                gap: '16px',
-              }}
-            >
-              <div style={{
-                width: '120px',
-                flexShrink: 0,
-                fontSize: 'var(--font-size-small)',
-                color: 'var(--text-tertiary)',
-              }}>
-                {formatDate(entry.created_at)}
+          {entries.map((entry) => {
+            const desc = getDescription(entry);
+            return (
+              <div
+                key={entry.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '12px 24px',
+                  borderBottom: '1px solid var(--border-default)',
+                  gap: '16px',
+                }}
+              >
+                <div style={{
+                  width: '120px',
+                  flexShrink: 0,
+                  fontSize: 'var(--font-size-small)',
+                  color: 'var(--text-tertiary)',
+                }}>
+                  {formatDate(entry.created_at)}
+                </div>
+                <div style={{
+                  width: '120px',
+                  flexShrink: 0,
+                  fontSize: 'var(--font-size-body)',
+                  fontWeight: 'var(--font-weight-semibold)',
+                  color: 'var(--text-primary)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {entry.user_name || 'System'}
+                </div>
+                <div style={{
+                  flex: 1,
+                  fontSize: 'var(--font-size-body)',
+                  color: 'var(--text-primary)',
+                }}>
+                  {desc.main}
+                  {desc.sub && (
+                    <span style={{
+                      fontSize: 'var(--font-size-small)',
+                      color: 'var(--text-tertiary)',
+                      marginLeft: '6px',
+                    }}>
+                      — {desc.sub}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div style={{
-                width: '120px',
-                flexShrink: 0,
-                fontSize: 'var(--font-size-body)',
-                fontWeight: 'var(--font-weight-semibold)',
-                color: 'var(--text-primary)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}>
-                {entry.user_name || 'System'}
-              </div>
-              <div style={{
-                flex: 1,
-                fontSize: 'var(--font-size-body)',
-                color: 'var(--text-secondary)',
-              }}>
-                {getActionLabel(entry.action)}
-              </div>
-              <div style={{
-                width: '200px',
-                flexShrink: 0,
-                fontSize: 'var(--font-size-small)',
-                color: 'var(--text-tertiary)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                textAlign: 'right',
-              }}>
-                {getDetailText(entry)}
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Pagination */}
           {totalPages > 1 && (

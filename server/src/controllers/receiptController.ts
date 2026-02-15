@@ -380,7 +380,12 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
       action: 'receipt.update',
       resourceType: 'receipt',
       resourceId: id,
-      details: { fields: Object.keys(data).filter(k => (data as any)[k] !== undefined) },
+      details: {
+        fields: Object.keys(data).filter(k => (data as any)[k] !== undefined),
+        vendorName: receipt[0].vendor_name,
+        filename: receipt[0].original_filename,
+        total: receipt[0].total,
+      },
       ipAddress: req.ip,
     });
 
@@ -403,13 +408,13 @@ export const deleteReceipt = async (req: AuthenticatedRequest, res: Response) =>
       result = await sql`
         DELETE FROM receipts
         WHERE id = ${id} AND organization_id = ${req.organizationId}
-        RETURNING id
+        RETURNING id, vendor_name, original_filename, total
       `;
     } else {
       result = await sql`
         DELETE FROM receipts
         WHERE id = ${id} AND user_id = ${req.userId}
-        RETURNING id
+        RETURNING id, vendor_name, original_filename, total
       `;
     }
 
@@ -417,12 +422,19 @@ export const deleteReceipt = async (req: AuthenticatedRequest, res: Response) =>
       return res.status(404).json({ error: 'Receipt not found' });
     }
 
+    const deleted = result[0];
+
     logAuditEvent({
       organizationId: req.organizationId,
       userId: req.userId,
       action: 'receipt.delete',
       resourceType: 'receipt',
       resourceId: id,
+      details: {
+        vendorName: deleted.vendor_name,
+        filename: deleted.original_filename,
+        total: deleted.total,
+      },
       ipAddress: req.ip,
     });
 

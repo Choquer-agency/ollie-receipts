@@ -262,6 +262,10 @@ export const getConnectionStatus = async (req: AuthenticatedRequest, res: Respon
  */
 export const disconnect = async (req: AuthenticatedRequest, res: Response) => {
   try {
+    // Fetch connection info before revoking so we can log the company name
+    const connection = await getConnection(req.userId!, req.organizationId);
+    const companyName = connection?.company_name || '';
+
     const success = await revokeConnection(req.userId!, req.organizationId);
 
     if (!success) {
@@ -272,6 +276,7 @@ export const disconnect = async (req: AuthenticatedRequest, res: Response) => {
       organizationId: req.organizationId,
       userId: req.userId,
       action: 'qbo.disconnect',
+      details: { companyName },
       ipAddress: req.ip,
     });
 
@@ -402,7 +407,7 @@ export const publishReceipt = async (req: AuthenticatedRequest, res: Response) =
       action: 'receipt.publish',
       resourceType: 'receipt',
       resourceId: data.receiptId,
-      details: { vendorName: receipt.vendor_name, total: receipt.total, transactionId: result.transactionId },
+      details: { vendorName: receipt.vendor_name, total: receipt.total, transactionId: result.transactionId, publishTarget: receipt.publish_target || 'Expense' },
       ipAddress: req.ip,
     });
 
