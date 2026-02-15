@@ -54,7 +54,7 @@ export const requireAuth = async (
 
       if (clerkOrgId) {
         req.clerkOrgId = clerkOrgId;
-        req.orgRole = orgRole || 'org:member';
+        req.orgRole = orgRole || 'org:employee';
 
         const org = await getOrCreateOrganization(clerkOrgId, user.id);
         req.organizationId = org.id;

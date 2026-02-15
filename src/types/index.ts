@@ -113,7 +113,7 @@ export interface RuleMatch {
 }
 
 // Organization types
-export type OrgRole = 'org:admin' | 'org:bookkeeper' | 'org:member';
+export type OrgRole = 'org:admin' | 'org:accountant' | 'org:bookkeeper' | 'org:employee';
 
 export interface OrgMember {
   id: string;

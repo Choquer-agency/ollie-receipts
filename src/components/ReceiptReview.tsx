@@ -415,6 +415,7 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
       if (onRuleCreated) await onRuleCreated();
     } catch (err) {
       console.error('Failed to save category rule:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save category rule');
     } finally {
       setIsCreatingRule(false);
       setRulePrompt(null);

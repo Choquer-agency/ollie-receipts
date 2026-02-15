@@ -131,7 +131,7 @@ export const getReceipts = async (req: AuthenticatedRequest, res: Response) => {
 
     if (req.organizationId) {
       // Org mode
-      const isEmployee = req.orgRole === 'org:member';
+      const isEmployee = req.orgRole === 'org:employee';
 
       if (isEmployee) {
         // Employees only see their own uploads
@@ -216,7 +216,7 @@ export const getReceiptById = async (req: AuthenticatedRequest, res: Response) =
         WHERE r.id = ${id} AND r.organization_id = ${req.organizationId}
       `;
       // Employee can only see own receipts
-      if (receipts.length > 0 && req.orgRole === 'org:member' && receipts[0].uploaded_by !== req.userId) {
+      if (receipts.length > 0 && req.orgRole === 'org:employee' && receipts[0].uploaded_by !== req.userId) {
         return res.status(403).json({ error: 'You can only view your own receipts' });
       }
     } else {
@@ -374,20 +374,58 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
       RETURNING *
     `;
 
-    logAuditEvent({
-      organizationId: req.organizationId,
-      userId: req.userId,
-      action: 'receipt.update',
-      resourceType: 'receipt',
-      resourceId: id,
-      details: {
-        fields: Object.keys(data).filter(k => (data as any)[k] !== undefined),
-        vendorName: receipt[0].vendor_name,
-        filename: receipt[0].original_filename,
-        total: receipt[0].total,
-      },
-      ipAddress: req.ip,
-    });
+    // Map of API field names → DB column names for diff comparison
+    const FIELD_DB_MAP: Record<string, string> = {
+      vendorName: 'vendor_name',
+      transactionDate: 'transaction_date',
+      subtotal: 'subtotal',
+      tax: 'tax',
+      total: 'total',
+      currency: 'currency',
+      suggestedCategory: 'suggested_category',
+      description: 'description',
+      documentType: 'document_type',
+      taxTreatment: 'tax_treatment',
+      taxRate: 'tax_rate',
+      publishTarget: 'publish_target',
+      isPaid: 'is_paid',
+      paymentAccountId: 'payment_account_id',
+      qbAccountId: 'qb_account_id',
+      paidBy: 'paid_by',
+      status: 'status',
+      imageUrl: 'image_url',
+      originalFilename: 'original_filename',
+    };
+
+    // Compute which fields actually changed vs current DB state
+    const changedFields = Object.keys(data)
+      .filter(k => (data as any)[k] !== undefined)
+      .filter(k => {
+        const dbCol = FIELD_DB_MAP[k];
+        if (!dbCol) return true; // unknown field — include to be safe
+        const oldVal = current[dbCol];
+        const newVal = (data as any)[k];
+        if (oldVal == null && newVal == null) return false;
+        return String(oldVal) !== String(newVal);
+      });
+
+    // Only log if something actually changed
+    if (changedFields.length > 0) {
+      logAuditEvent({
+        organizationId: req.organizationId,
+        userId: req.userId,
+        action: 'receipt.update',
+        resourceType: 'receipt',
+        resourceId: id,
+        details: {
+          fields: changedFields,
+          vendorName: receipt[0].vendor_name,
+          filename: receipt[0].original_filename,
+          total: receipt[0].total,
+        },
+        ipAddress: req.ip,
+      });
+    }
 
     res.json(receipt[0]);
   } catch (error) {

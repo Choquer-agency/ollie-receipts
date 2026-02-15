@@ -11,9 +11,9 @@ router.use(requireAuth);
 router.get('/info', getOrgInfo);
 
 // Members list - admin + bookkeeper (needed for "paid by" dropdown)
-router.get('/members', requireOrgRole('org:admin', 'org:bookkeeper'), getOrgMembers);
+router.get('/members', requireOrgRole('org:admin', 'org:accountant', 'org:bookkeeper'), getOrgMembers);
 
-// Audit log - admin only
-router.get('/audit-log', requireOrgRole('org:admin'), getAuditLog);
+// Audit log - admin + accountant
+router.get('/audit-log', requireOrgRole('org:admin', 'org:accountant'), getAuditLog);
 
 export default router;

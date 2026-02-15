@@ -3,17 +3,19 @@ import { useOrganization, useUser } from '@clerk/clerk-react';
 import { AlertCircle, Loader2, Trash2, ChevronDown } from 'lucide-react';
 
 type TabState = 'members' | 'invitations';
-type OrgRole = 'org:admin' | 'org:bookkeeper' | 'org:member';
+type OrgRole = 'org:admin' | 'org:accountant' | 'org:bookkeeper' | 'org:employee';
 
 const ROLE_LABELS: Record<string, string> = {
   'org:admin': 'Admin',
+  'org:accountant': 'Accountant',
   'org:bookkeeper': 'Bookkeeper',
-  'org:member': 'Employee',
+  'org:employee': 'Employee',
 };
 
 const ROLE_OPTIONS: { value: OrgRole; label: string }[] = [
-  { value: 'org:member', label: 'Employee' },
+  { value: 'org:employee', label: 'Employee' },
   { value: 'org:bookkeeper', label: 'Bookkeeper' },
+  { value: 'org:accountant', label: 'Accountant' },
   { value: 'org:admin', label: 'Admin' },
 ];
 
@@ -26,7 +28,7 @@ const TeamManagement: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<TabState>('members');
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<OrgRole>('org:member');
+  const [inviteRole, setInviteRole] = useState<OrgRole>('org:employee');
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');

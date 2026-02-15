@@ -31,6 +31,19 @@ export async function getRules(userId: string): Promise<CategoryRule[]> {
 }
 
 /**
+ * Resolve a QBO account ID (text) to the internal qb_categories UUID.
+ */
+async function resolveQbCategoryId(userId: string, qbAccountId: string): Promise<string> {
+  const rows = await sql`
+    SELECT id FROM qb_categories WHERE user_id = ${userId} AND qb_account_id = ${qbAccountId} AND active = true
+  `;
+  if (rows.length === 0) {
+    throw new Error(`No active QB category found for account ID "${qbAccountId}"`);
+  }
+  return rows[0].id as string;
+}
+
+/**
  * Create a new category rule.
  */
 export async function createRule(
@@ -42,12 +55,15 @@ export async function createRule(
     receiptId?: string;
   }
 ): Promise<CategoryRule> {
+  // Resolve QBO account ID to internal UUID
+  const categoryUuid = await resolveQbCategoryId(userId, data.qbCategoryId);
+
   const rows = await sql`
     INSERT INTO category_rules (user_id, vendor_pattern, qb_category_id, match_type, created_from_receipt_id)
     VALUES (
       ${userId},
       ${data.vendorPattern},
-      ${data.qbCategoryId},
+      ${categoryUuid},
       ${data.matchType || 'exact'},
       ${data.receiptId || null}
     )
@@ -77,9 +93,12 @@ export async function updateRule(
   const sets: string[] = [];
   const values: any[] = [];
 
+  // Resolve QBO account ID to internal UUID if provided
+  let resolvedCategoryId: string | undefined;
   if (data.qbCategoryId !== undefined) {
+    resolvedCategoryId = await resolveQbCategoryId(userId, data.qbCategoryId);
     sets.push('qb_category_id');
-    values.push(data.qbCategoryId);
+    values.push(resolvedCategoryId);
   }
   if (data.matchType !== undefined) {
     sets.push('match_type');
@@ -99,9 +118,9 @@ export async function updateRule(
   // Use individual update queries since neon sql tagged template
   // doesn't support dynamic column names easily
   let result;
-  if (data.qbCategoryId !== undefined) {
+  if (resolvedCategoryId !== undefined) {
     result = await sql`
-      UPDATE category_rules SET qb_category_id = ${data.qbCategoryId}, updated_at = CURRENT_TIMESTAMP
+      UPDATE category_rules SET qb_category_id = ${resolvedCategoryId}, updated_at = CURRENT_TIMESTAMP
       WHERE id = ${ruleId} AND user_id = ${userId} RETURNING *
     `;
   }

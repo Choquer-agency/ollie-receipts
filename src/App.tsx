@@ -224,13 +224,14 @@ const SignedInApp: React.FC = () => {
   const isInOrg = !!organization;
   const orgRole = (membership?.role as OrgRole) || null;
   const isAdmin = orgRole === 'org:admin';
+  const isAccountant = orgRole === 'org:accountant';
   const isBookkeeper = orgRole === 'org:bookkeeper';
-  const isEmployee = orgRole === 'org:member';
-  const canReview = !isInOrg || isAdmin || isBookkeeper;
-  const canPublish = !isInOrg || isAdmin || isBookkeeper;
-  const canManageTeam = isInOrg && isAdmin;
-  const canViewAudit = isInOrg && isAdmin;
-  const canConnectQBO = !isInOrg || isAdmin;
+  const isEmployee = orgRole === 'org:employee';
+  const canReview = !isInOrg || isAdmin || isAccountant || isBookkeeper;
+  const canPublish = !isInOrg || isAdmin || isAccountant || isBookkeeper;
+  const canManageTeam = isInOrg && (isAdmin || isAccountant);
+  const canViewAudit = isInOrg && (isAdmin || isAccountant);
+  const canConnectQBO = !isInOrg || isAdmin || isAccountant;
 
   // Load data on mount and when org context changes
   useEffect(() => {

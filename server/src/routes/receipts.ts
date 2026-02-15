@@ -27,7 +27,7 @@ router.get('/:id', getReceiptById);
 router.post('/', createReceipt);
 
 // Edit/Delete - admin + bookkeeper only
-router.patch('/:id', requireOrgRole('org:admin', 'org:bookkeeper'), updateReceipt);
-router.delete('/:id', requireOrgRole('org:admin', 'org:bookkeeper'), deleteReceipt);
+router.patch('/:id', requireOrgRole('org:admin', 'org:accountant', 'org:bookkeeper'), updateReceipt);
+router.delete('/:id', requireOrgRole('org:admin', 'org:accountant', 'org:bookkeeper'), deleteReceipt);
 
 export default router;
