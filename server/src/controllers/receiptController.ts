@@ -9,18 +9,22 @@ import { logAuditEvent } from '../services/auditService.js';
 import { matchRule, incrementRuleApplied } from '../services/categoryRulesService.js';
 
 
+// Encode the path portion of an R2 URL (encode each segment, preserving slashes)
+function encodeR2Path(path: string): string {
+  return path.split('/').map(segment => encodeURIComponent(segment)).join('/');
+}
+
 // Rewrite old R2 public URLs to the current custom domain
-const OLD_R2_URL_PREFIX = 'https://pub-';
 function rewriteImageUrl(url: string | null): string | null {
   if (!url || !R2_PUBLIC_URL) return url;
-  // Already using the current domain
-  if (url.startsWith(R2_PUBLIC_URL)) return url;
-  // Old R2 dev URLs: extract the key (everything after the host/path prefix)
   const receiptsIdx = url.indexOf('/receipts/');
-  if (receiptsIdx !== -1) {
-    return `${R2_PUBLIC_URL}${url.substring(receiptsIdx)}`;
-  }
-  return url;
+  if (receiptsIdx === -1) return url;
+  const path = url.substring(receiptsIdx);
+  const encodedPath = encodeR2Path(path);
+  // Already using the current domain — just ensure encoding
+  if (url.startsWith(R2_PUBLIC_URL)) return `${R2_PUBLIC_URL}${encodedPath}`;
+  // Old R2 dev URLs: rewrite domain and encode
+  return `${R2_PUBLIC_URL}${encodedPath}`;
 }
 
 function rewriteReceiptUrls<T extends { image_url?: string | null }>(rows: T[]): T[] {
@@ -548,7 +552,8 @@ export const getUploadUrl = async (req: AuthenticatedRequest, res: Response) => 
     });
 
     const uploadUrl = await getSignedUrl(r2Client, command, { expiresIn: 3600 });
-    const publicUrl = R2_PUBLIC_URL ? `${R2_PUBLIC_URL}/${key}` : uploadUrl.split('?')[0];
+    const encodedKey = key.split('/').map(s => encodeURIComponent(s)).join('/');
+    const publicUrl = R2_PUBLIC_URL ? `${R2_PUBLIC_URL}/${encodedKey}` : uploadUrl.split('?')[0];
 
     res.json({ uploadUrl, publicUrl, key });
   } catch (error) {

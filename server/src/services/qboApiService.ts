@@ -390,9 +390,10 @@ async function downloadImage(imageUrl: string): Promise<{
   const isOldR2 = !isCurrentR2 && receiptsIdx !== -1;
 
   if (isCurrentR2 || isOldR2) {
-    const key = isCurrentR2
+    const rawKey = isCurrentR2
       ? imageUrl.replace(`${R2_PUBLIC_URL}/`, '')
       : imageUrl.substring(receiptsIdx + 1); // strip leading '/' → "receipts/..."
+    const key = decodeURIComponent(rawKey);
     const command = new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key });
     const r2Response = await r2Client.send(command);
 
