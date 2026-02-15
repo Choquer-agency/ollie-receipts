@@ -1,6 +1,8 @@
 import fetch from 'node-fetch';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getValidAccessToken } from './qboAuthService.js';
 import { QB_CONFIG } from '../config/quickbooks.js';
+import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL } from '../config/r2.js';
 
 export interface QBAccount {
   Id: string;
@@ -382,6 +384,25 @@ async function downloadImage(imageUrl: string): Promise<{
   contentType: string;
   fileName: string;
 }> {
+  // If the URL is an R2 public URL, fetch directly from R2 using credentials
+  if (R2_PUBLIC_URL && imageUrl.startsWith(R2_PUBLIC_URL)) {
+    const key = imageUrl.replace(`${R2_PUBLIC_URL}/`, '');
+    const command = new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key });
+    const r2Response = await r2Client.send(command);
+
+    if (!r2Response.Body) {
+      throw new Error('Image not found in R2 storage');
+    }
+
+    const bytes = await r2Response.Body.transformToByteArray();
+    const buffer = Buffer.from(bytes);
+    const contentType = r2Response.ContentType || 'image/jpeg';
+    const fileName = decodeURIComponent(key.split('/').pop() || 'receipt.jpg');
+
+    return { buffer, contentType, fileName };
+  }
+
+  // Fallback: fetch from external URL
   const response = await fetch(imageUrl);
   if (!response.ok) {
     throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);

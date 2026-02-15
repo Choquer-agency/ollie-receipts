@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   getReceipts,
   getReceiptById,
+  getReceiptImage,
   createReceipt,
   updateReceipt,
   deleteReceipt,
@@ -21,6 +22,7 @@ router.post('/check-duplicates', checkDuplicates);
 
 // Read routes - all roles (controller handles employee filtering)
 router.get('/', getReceipts);
+router.get('/:id/image', getReceiptImage);
 router.get('/:id', getReceiptById);
 
 // Create - all roles

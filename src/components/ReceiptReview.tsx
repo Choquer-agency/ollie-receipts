@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, AlertCircle, Calendar, Link as LinkIcon, Calculator, Percent, Info, Zap, X, Check } from 'lucide-react';
 import { Receipt, ReceiptStatus, QuickBooksAccount, PaymentAccount, TaxTreatment, CachedCategory, OrgMember } from '../types';
 import { fetchAccounts, fetchPaymentAccounts, publishReceipt, isQBOConnectionError } from '../services/qboService';
-import { categoryRulesApi, orgApi } from '../services/apiService';
+import api, { categoryRulesApi, orgApi } from '../services/apiService';
 import StatusBadge from './StatusBadge';
 
 interface ReceiptReviewProps {
@@ -119,6 +119,28 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     existingRuleId?: string;
   } | null>(null);
   const [isCreatingRule, setIsCreatingRule] = useState(false);
+  const [imageSrc, setImageSrc] = useState<string>('');
+
+  // Fetch receipt image through backend proxy (R2 public URLs are broken)
+  useEffect(() => {
+    let revoked = false;
+    let objectUrl = '';
+
+    api.get(`/api/receipts/${receipt.id}/image`, { responseType: 'blob' })
+      .then((response) => {
+        if (revoked) return;
+        objectUrl = URL.createObjectURL(response.data);
+        setImageSrc(objectUrl);
+      })
+      .catch((err) => {
+        console.error('Failed to load receipt image via proxy:', err);
+      });
+
+    return () => {
+      revoked = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [receipt.id]);
 
   useEffect(() => {
     const loadAccounts = async () => {
@@ -561,9 +583,9 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
              padding: '32px',
              overflow: 'hidden',
            }}>
-              <img 
-                src={receipt.image_url} 
-                alt="Receipt" 
+              <img
+                src={imageSrc}
+                alt="Receipt"
                 style={{
                   maxHeight: '100%',
                   maxWidth: '100%',

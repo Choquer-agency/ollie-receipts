@@ -7,28 +7,7 @@ import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL } from '../config/r2.js';
 import { z } from 'zod';
 import { logAuditEvent } from '../services/auditService.js';
 import { matchRule, incrementRuleApplied } from '../services/categoryRulesService.js';
-
-// Generate a signed R2 URL from a stored public URL (15 min expiry)
-async function getSignedImageUrl(imageUrl: string): Promise<string> {
-  if (!imageUrl || !R2_PUBLIC_URL) return imageUrl;
-  // Extract the R2 object key by stripping the public URL prefix
-  const key = imageUrl.replace(`${R2_PUBLIC_URL}/`, '');
-  if (key === imageUrl) return imageUrl; // URL doesn't match R2 pattern, return as-is
-  const command = new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key });
-  return getSignedUrl(r2Client, command, { expiresIn: 900 });
-}
-
-// Replace image_url with a signed URL on an array of receipt rows
-async function signReceiptImageUrls<T extends { image_url?: string }>(receipts: T[]): Promise<T[]> {
-  return Promise.all(
-    receipts.map(async (r) => {
-      if (r.image_url) {
-        return { ...r, image_url: await getSignedImageUrl(r.image_url) };
-      }
-      return r;
-    })
-  );
-}
+import { Readable } from 'stream';
 
 // Validation schemas
 const createReceiptSchema = z.object({
@@ -217,9 +196,7 @@ export const getReceipts = async (req: AuthenticatedRequest, res: Response) => {
 
     console.log('Found', receipts.length, 'receipts');
 
-    // Sign image URLs and return
-    const signed = await signReceiptImageUrls(Array.isArray(receipts) ? receipts : []);
-    res.json(signed);
+    res.json(Array.isArray(receipts) ? receipts : []);
   } catch (error) {
     console.error('Get receipts error:', error);
     res.status(500).json({ error: 'Failed to fetch receipts', details: error instanceof Error ? error.message : 'Unknown error' });
@@ -253,8 +230,7 @@ export const getReceiptById = async (req: AuthenticatedRequest, res: Response) =
       return res.status(404).json({ error: 'Receipt not found' });
     }
 
-    const [signed] = await signReceiptImageUrls([receipts[0]]);
-    res.json(signed);
+    res.json(receipts[0]);
   } catch (error) {
     console.error('Get receipt error:', error);
     res.status(500).json({ error: 'Failed to fetch receipt' });
@@ -606,5 +582,66 @@ export const checkDuplicates = async (req: AuthenticatedRequest, res: Response) 
       hint: errorMessage.includes('column') ? 'Database migration may be required. Run server/migrate.sh' : undefined
     };
     res.status(500).json(detailedError);
+  }
+};
+
+export const getReceiptImage = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Look up receipt with ownership check (same pattern as getReceiptById)
+    let receipts;
+    if (req.organizationId) {
+      receipts = await sql`
+        SELECT r.image_url, r.uploaded_by
+        FROM receipts r
+        WHERE r.id = ${id} AND r.organization_id = ${req.organizationId}
+      `;
+      if (receipts.length > 0 && req.orgRole === 'org:employee' && receipts[0].uploaded_by !== req.userId) {
+        return res.status(403).json({ error: 'You can only view your own receipts' });
+      }
+    } else {
+      receipts = await sql`
+        SELECT image_url FROM receipts
+        WHERE id = ${id} AND user_id = ${req.userId}
+      `;
+    }
+
+    if (receipts.length === 0) {
+      return res.status(404).json({ error: 'Receipt not found' });
+    }
+
+    const imageUrl = receipts[0].image_url;
+    if (!imageUrl || !R2_PUBLIC_URL) {
+      return res.status(404).json({ error: 'No image available' });
+    }
+
+    // Extract R2 object key from stored public URL
+    const key = imageUrl.replace(`${R2_PUBLIC_URL}/`, '');
+    if (key === imageUrl) {
+      return res.status(400).json({ error: 'Image URL does not match R2 storage' });
+    }
+
+    const command = new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key });
+    const r2Response = await r2Client.send(command);
+
+    if (!r2Response.Body) {
+      return res.status(404).json({ error: 'Image not found in storage' });
+    }
+
+    res.set('Content-Type', r2Response.ContentType || 'image/jpeg');
+    res.set('Cache-Control', 'private, max-age=3600');
+
+    // Stream the R2 response body to the client
+    if (r2Response.Body instanceof Readable) {
+      r2Response.Body.pipe(res);
+    } else {
+      // AWS SDK v3 may return a web ReadableStream; convert to buffer
+      const bytes = await r2Response.Body.transformToByteArray();
+      res.send(Buffer.from(bytes));
+    }
+  } catch (error) {
+    console.error('Get receipt image error:', error);
+    res.status(500).json({ error: 'Failed to fetch receipt image' });
   }
 };
