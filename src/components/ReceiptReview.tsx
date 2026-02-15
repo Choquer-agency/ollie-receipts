@@ -271,10 +271,14 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     setRulePrompt(null);
 
     const selectedAccountId = e.target.value;
+    // Sync suggested_category to the selected account's display name
+    const selectedAccount = expenseAccounts.find(a => a.id === selectedAccountId);
+    if (selectedAccount) {
+      setFormData(prev => ({ ...prev, suggested_category: selectedAccount.name }));
+    }
+
     const vendorName = formData.vendor_name?.trim();
     if (!vendorName || !selectedAccountId || !onRuleCreated) return;
-
-    const selectedAccount = expenseAccounts.find(a => a.id === selectedAccountId);
     const categoryName = selectedAccount?.name?.replace(/^\d+\s*-\s*/, '') || '';
 
     try {

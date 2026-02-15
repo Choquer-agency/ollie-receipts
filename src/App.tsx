@@ -314,8 +314,8 @@ const SignedInApp: React.FC = () => {
         paidBy: updated.paid_by ?? undefined,
       };
 
-      await receiptApi.update(updated.id, apiData);
-      setReceipts(prev => prev.map(r => r.id === updated.id ? updated : r));
+      const serverReceipt = await receiptApi.update(updated.id, apiData);
+      setReceipts(prev => prev.map(r => r.id === updated.id ? serverReceipt : r));
     } catch (error: any) {
       console.error('Failed to update receipt:', error);
       console.error('Error response:', error.response?.data);

@@ -323,6 +323,7 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
     // Auto-apply category rule if vendor name is being set and no category is explicitly provided
     let autoQbAccountId: string | null = null;
     let autoRuleId: string | null = null;
+    let autoCategoryName: string | null = null;
     const vendorName = data.vendorName !== undefined ? data.vendorName : current.vendor_name;
     const hasExplicitCategory = data.qbAccountId !== undefined && data.qbAccountId !== null;
     const hasExistingCategory = current.qb_account_id !== null;
@@ -333,6 +334,7 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
         if (rule && rule.qb_account_id) {
           autoQbAccountId = rule.qb_account_id;
           autoRuleId = rule.id;
+          autoCategoryName = rule.category_name || null;
           await incrementRuleApplied(rule.id);
           console.log(`Auto-categorized receipt ${id}: "${vendorName}" → ${rule.category_name} (rule ${rule.id})`);
         }
@@ -341,11 +343,35 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
       }
     }
 
+    // When user explicitly sets a QB category, resolve its name for suggested_category
+    let explicitCategoryName: string | null = null;
+    if (hasExplicitCategory) {
+      try {
+        const catResult = await sql`
+          SELECT name FROM qb_categories
+          WHERE user_id = ${req.userId}
+            AND qb_account_id = ${data.qbAccountId}
+            AND active = true
+          LIMIT 1
+        `;
+        if (catResult.length > 0) {
+          explicitCategoryName = catResult[0].name;
+        }
+      } catch (err) {
+        console.error('Category name lookup failed (non-fatal):', err);
+      }
+    }
+
     // Determine final qb_account_id and auto_categorized flag
     const finalQbAccountId = hasExplicitCategory
       ? data.qbAccountId
       : (autoQbAccountId || current.qb_account_id);
     const isAutoCategorized = autoQbAccountId !== null;
+
+    // Determine final suggested_category: prefer resolved category name over OCR suggestion
+    const finalSuggestedCategory = explicitCategoryName
+      || autoCategoryName
+      || (data.suggestedCategory !== undefined ? data.suggestedCategory : current.suggested_category);
 
     // Update with merged values
     const receipt = await sql`
@@ -358,7 +384,7 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
         tax = ${data.tax !== undefined ? data.tax : current.tax},
         total = ${data.total !== undefined ? data.total : current.total},
         currency = ${data.currency !== undefined ? data.currency : current.currency},
-        suggested_category = ${data.suggestedCategory !== undefined ? data.suggestedCategory : current.suggested_category},
+        suggested_category = ${finalSuggestedCategory},
         description = ${data.description !== undefined ? data.description : current.description},
         document_type = ${data.documentType !== undefined ? data.documentType : current.document_type},
         tax_treatment = ${data.taxTreatment !== undefined ? data.taxTreatment : current.tax_treatment},
