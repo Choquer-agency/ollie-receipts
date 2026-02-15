@@ -1,13 +1,34 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { sql } from '../db/index.js';
-import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL } from '../config/r2.js';
 import { z } from 'zod';
 import { logAuditEvent } from '../services/auditService.js';
 import { matchRule, incrementRuleApplied } from '../services/categoryRulesService.js';
-import { Readable } from 'stream';
+
+
+// Rewrite old R2 public URLs to the current custom domain
+const OLD_R2_URL_PREFIX = 'https://pub-';
+function rewriteImageUrl(url: string | null): string | null {
+  if (!url || !R2_PUBLIC_URL) return url;
+  // Already using the current domain
+  if (url.startsWith(R2_PUBLIC_URL)) return url;
+  // Old R2 dev URLs: extract the key (everything after the host/path prefix)
+  const receiptsIdx = url.indexOf('/receipts/');
+  if (receiptsIdx !== -1) {
+    return `${R2_PUBLIC_URL}${url.substring(receiptsIdx)}`;
+  }
+  return url;
+}
+
+function rewriteReceiptUrls<T extends { image_url?: string | null }>(rows: T[]): T[] {
+  return rows.map(row => ({
+    ...row,
+    image_url: rewriteImageUrl(row.image_url ?? null),
+  }));
+}
 
 // Validation schemas
 const createReceiptSchema = z.object({
@@ -196,7 +217,8 @@ export const getReceipts = async (req: AuthenticatedRequest, res: Response) => {
 
     console.log('Found', receipts.length, 'receipts');
 
-    res.json(Array.isArray(receipts) ? receipts : []);
+    const results = Array.isArray(receipts) ? receipts : [];
+    res.json(rewriteReceiptUrls(results));
   } catch (error) {
     console.error('Get receipts error:', error);
     res.status(500).json({ error: 'Failed to fetch receipts', details: error instanceof Error ? error.message : 'Unknown error' });
@@ -230,7 +252,7 @@ export const getReceiptById = async (req: AuthenticatedRequest, res: Response) =
       return res.status(404).json({ error: 'Receipt not found' });
     }
 
-    res.json(receipts[0]);
+    res.json(rewriteReceiptUrls(receipts)[0]);
   } catch (error) {
     console.error('Get receipt error:', error);
     res.status(500).json({ error: 'Failed to fetch receipt' });
@@ -585,63 +607,3 @@ export const checkDuplicates = async (req: AuthenticatedRequest, res: Response) 
   }
 };
 
-export const getReceiptImage = async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    // Look up receipt with ownership check (same pattern as getReceiptById)
-    let receipts;
-    if (req.organizationId) {
-      receipts = await sql`
-        SELECT r.image_url, r.uploaded_by
-        FROM receipts r
-        WHERE r.id = ${id} AND r.organization_id = ${req.organizationId}
-      `;
-      if (receipts.length > 0 && req.orgRole === 'org:employee' && receipts[0].uploaded_by !== req.userId) {
-        return res.status(403).json({ error: 'You can only view your own receipts' });
-      }
-    } else {
-      receipts = await sql`
-        SELECT image_url FROM receipts
-        WHERE id = ${id} AND user_id = ${req.userId}
-      `;
-    }
-
-    if (receipts.length === 0) {
-      return res.status(404).json({ error: 'Receipt not found' });
-    }
-
-    const imageUrl = receipts[0].image_url;
-    if (!imageUrl || !R2_PUBLIC_URL) {
-      return res.status(404).json({ error: 'No image available' });
-    }
-
-    // Extract R2 object key from stored public URL
-    const key = imageUrl.replace(`${R2_PUBLIC_URL}/`, '');
-    if (key === imageUrl) {
-      return res.status(400).json({ error: 'Image URL does not match R2 storage' });
-    }
-
-    const command = new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key });
-    const r2Response = await r2Client.send(command);
-
-    if (!r2Response.Body) {
-      return res.status(404).json({ error: 'Image not found in storage' });
-    }
-
-    res.set('Content-Type', r2Response.ContentType || 'image/jpeg');
-    res.set('Cache-Control', 'private, max-age=3600');
-
-    // Stream the R2 response body to the client
-    if (r2Response.Body instanceof Readable) {
-      r2Response.Body.pipe(res);
-    } else {
-      // AWS SDK v3 may return a web ReadableStream; convert to buffer
-      const bytes = await r2Response.Body.transformToByteArray();
-      res.send(Buffer.from(bytes));
-    }
-  } catch (error) {
-    console.error('Get receipt image error:', error);
-    res.status(500).json({ error: 'Failed to fetch receipt image' });
-  }
-};
