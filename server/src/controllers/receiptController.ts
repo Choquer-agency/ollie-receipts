@@ -8,6 +8,28 @@ import { z } from 'zod';
 import { logAuditEvent } from '../services/auditService.js';
 import { matchRule, incrementRuleApplied } from '../services/categoryRulesService.js';
 
+// Generate a signed R2 URL from a stored public URL (15 min expiry)
+async function getSignedImageUrl(imageUrl: string): Promise<string> {
+  if (!imageUrl || !R2_PUBLIC_URL) return imageUrl;
+  // Extract the R2 object key by stripping the public URL prefix
+  const key = imageUrl.replace(`${R2_PUBLIC_URL}/`, '');
+  if (key === imageUrl) return imageUrl; // URL doesn't match R2 pattern, return as-is
+  const command = new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key });
+  return getSignedUrl(r2Client, command, { expiresIn: 900 });
+}
+
+// Replace image_url with a signed URL on an array of receipt rows
+async function signReceiptImageUrls<T extends { image_url?: string }>(receipts: T[]): Promise<T[]> {
+  return Promise.all(
+    receipts.map(async (r) => {
+      if (r.image_url) {
+        return { ...r, image_url: await getSignedImageUrl(r.image_url) };
+      }
+      return r;
+    })
+  );
+}
+
 // Validation schemas
 const createReceiptSchema = z.object({
   imageUrl: z.string().url(),
@@ -195,8 +217,9 @@ export const getReceipts = async (req: AuthenticatedRequest, res: Response) => {
 
     console.log('Found', receipts.length, 'receipts');
 
-    // Always return an array
-    res.json(Array.isArray(receipts) ? receipts : []);
+    // Sign image URLs and return
+    const signed = await signReceiptImageUrls(Array.isArray(receipts) ? receipts : []);
+    res.json(signed);
   } catch (error) {
     console.error('Get receipts error:', error);
     res.status(500).json({ error: 'Failed to fetch receipts', details: error instanceof Error ? error.message : 'Unknown error' });
@@ -230,7 +253,8 @@ export const getReceiptById = async (req: AuthenticatedRequest, res: Response) =
       return res.status(404).json({ error: 'Receipt not found' });
     }
 
-    res.json(receipts[0]);
+    const [signed] = await signReceiptImageUrls([receipts[0]]);
+    res.json(signed);
   } catch (error) {
     console.error('Get receipt error:', error);
     res.status(500).json({ error: 'Failed to fetch receipt' });
