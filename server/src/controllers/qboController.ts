@@ -8,6 +8,7 @@ import {
   revokeConnection,
   extractUserIdFromState,
   getValidAccessToken,
+  checkConnectionHealth,
 } from '../services/qboAuthService.js';
 import {
   fetchExpenseAccounts,
@@ -226,30 +227,23 @@ export const handleCallback = async (req: AuthenticatedRequest, res: Response) =
  */
 export const getConnectionStatus = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const connection = await getConnection(req.userId!, req.organizationId);
+    // Use safe health check that reads DB state without triggering a token refresh.
+    // This prevents the bug where a transient refresh failure makes the UI show "reconnect".
+    const health = await checkConnectionHealth(req.userId!, req.organizationId);
 
-    if (!connection) {
+    if (!health.connected) {
       return res.json({
         connected: false,
-      });
-    }
-
-    // Validate that tokens are actually usable (attempt refresh if expired)
-    const validToken = await getValidAccessToken(req.userId!, req.organizationId);
-    if (!validToken) {
-      console.warn(`⚠ QBO connection exists for user ${req.userId} but tokens are invalid/expired`);
-      return res.json({
-        connected: false,
-        error: 'token_expired',
-        companyName: connection.company_name,
+        error: health.error,
+        companyName: health.companyName,
       });
     }
 
     res.json({
       connected: true,
-      companyName: connection.company_name,
-      connectedAt: connection.connected_at,
-      realmId: connection.realm_id,
+      companyName: health.companyName,
+      connectedAt: health.connectedAt,
+      realmId: health.realmId,
     });
   } catch (error) {
     console.error('Error checking connection status:', error);

@@ -21,6 +21,7 @@ export interface QBConnection {
   refresh_token: string;
   token_expires_at: Date;
   refresh_token_created_at: Date;
+  refresh_token_expires_at: Date | null;
   company_name: string | null;
   connected_at: Date;
   last_refreshed_at: Date;
@@ -127,21 +128,23 @@ export async function storeConnection(
   organizationId?: string
 ): Promise<QBConnection> {
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
-  const refreshTokenCreatedAt = new Date(); // Track when refresh token was created
+  const refreshTokenCreatedAt = new Date();
+  const refreshTokenExpiresAt = new Date(Date.now() + tokens.x_refresh_token_expires_in * 1000);
 
   try {
     // Use INSERT ... ON CONFLICT to handle updates for existing connections
     const result = await sql`
       INSERT INTO quickbooks_connections (
         user_id, realm_id, access_token, refresh_token,
-        token_expires_at, refresh_token_created_at, company_name,
-        organization_id
+        token_expires_at, refresh_token_created_at, refresh_token_expires_at,
+        company_name, organization_id
       )
       VALUES (
         ${userId}, ${realmId}, ${tokens.access_token},
         ${tokens.refresh_token}, ${expiresAt.toISOString()},
-        ${refreshTokenCreatedAt.toISOString()}, ${companyName || null},
-        ${organizationId || null}
+        ${refreshTokenCreatedAt.toISOString()},
+        ${refreshTokenExpiresAt.toISOString()},
+        ${companyName || null}, ${organizationId || null}
       )
       ON CONFLICT (user_id)
       DO UPDATE SET
@@ -150,6 +153,7 @@ export async function storeConnection(
         refresh_token = EXCLUDED.refresh_token,
         token_expires_at = EXCLUDED.token_expires_at,
         refresh_token_created_at = EXCLUDED.refresh_token_created_at,
+        refresh_token_expires_at = EXCLUDED.refresh_token_expires_at,
         company_name = EXCLUDED.company_name,
         organization_id = COALESCE(EXCLUDED.organization_id, quickbooks_connections.organization_id),
         last_refreshed_at = CURRENT_TIMESTAMP
@@ -216,120 +220,158 @@ export function needsTokenRefresh(connection: QBConnection): boolean {
 }
 
 /**
- * Refresh access token using refresh token
- * Also updates refresh_token_created_at to track refresh token age
+ * Classify a refresh error as fatal (must reconnect) or transient (can retry)
  */
-export async function refreshAccessToken(connection: QBConnection): Promise<QBConnection> {
-  const oauthClient = createOAuthClient();
-  
-  try {
-    console.log(`🔄 Refreshing access token for user ${connection.user_id}...`);
-    
-    // Set the current refresh token
-    oauthClient.setToken({
-      refresh_token: connection.refresh_token,
-      realmId: connection.realm_id,
-    });
-    
-    // Refresh the token
-    const authResponse = await oauthClient.refresh();
-    const token = authResponse.token;
-    
-    const newTokens: TokenData = {
-      access_token: token.access_token,
-      refresh_token: token.refresh_token,
-      expires_in: token.expires_in || 3600,
-      x_refresh_token_expires_in: token.x_refresh_token_expires_in || 8640000,
-    };
-    
-    // Update tokens in database
-    const expiresAt = new Date(Date.now() + newTokens.expires_in * 1000);
-    const now = new Date();
-    
-    // QuickBooks returns a NEW refresh token on each refresh
-    // So we update refresh_token_created_at to track the new refresh token's age
-    const result = await sql`
-      UPDATE quickbooks_connections
-      SET 
-        access_token = ${newTokens.access_token},
-        refresh_token = ${newTokens.refresh_token},
-        token_expires_at = ${expiresAt.toISOString()},
-        refresh_token_created_at = ${now.toISOString()},
-        last_refreshed_at = CURRENT_TIMESTAMP
-      WHERE user_id = ${connection.user_id}
-      RETURNING *
-    `;
-    
-    console.log(`✅ Tokens refreshed successfully for user ${connection.user_id} (new expiry: ${expiresAt.toISOString()})`);
-    
-    return result[0] as QBConnection;
-  } catch (error: any) {
-    console.error(`❌ Error refreshing access token for user ${connection.user_id}:`, error);
-    console.error('Error details:', error.message || 'Unknown error');
-    console.error('Error response:', error.response?.data || 'No response data');
-    
-    // If refresh token is expired or invalid, throw a specific error
-    if (error.error === 'invalid_grant' || error.intuit_tid) {
-      console.error('❌ Refresh token is invalid or expired. User needs to reconnect.');
-      throw new Error('QuickBooks refresh token expired. Please reconnect to QuickBooks.');
-    }
-    
-    throw new Error(`Failed to refresh access token: ${error.message || 'Unknown error'}`);
-  }
+function isTransientError(error: any): boolean {
+  // Fatal: invalid_grant means refresh token is truly expired/revoked
+  if (error.error === 'invalid_grant') return false;
+
+  // Fatal: 401 from token endpoint means credentials are invalid
+  const statusCode = error.response?.status || error.statusCode;
+  if (statusCode === 401) return false;
+
+  // Transient: rate limiting, server errors, network issues
+  if (statusCode === 429 || (statusCode >= 500 && statusCode <= 504)) return true;
+  if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') return true;
+  if (error.message?.includes('network') || error.message?.includes('timeout')) return true;
+
+  // Default: treat unknown errors as transient (don't kill connection for unknowns)
+  return true;
 }
 
 /**
- * Get valid access token (refresh if needed)
- * Option 3: Also proactively renews refresh token after 30 days (on user activity)
+ * Refresh access token using refresh token with retry for transient errors.
+ * Also updates refresh_token_created_at and refresh_token_expires_at.
+ */
+export async function refreshAccessToken(connection: QBConnection): Promise<QBConnection> {
+  const maxAttempts = QB_CONFIG.refreshRetryAttempts;
+  const baseDelay = QB_CONFIG.refreshRetryBaseDelay;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const oauthClient = createOAuthClient();
+
+    try {
+      console.log(`🔄 Refreshing access token for user ${connection.user_id} (attempt ${attempt}/${maxAttempts})...`);
+
+      oauthClient.setToken({
+        refresh_token: connection.refresh_token,
+        realmId: connection.realm_id,
+      });
+
+      const authResponse = await oauthClient.refresh();
+      const token = authResponse.token;
+
+      const newTokens: TokenData = {
+        access_token: token.access_token,
+        refresh_token: token.refresh_token,
+        expires_in: token.expires_in || 3600,
+        x_refresh_token_expires_in: token.x_refresh_token_expires_in || 8640000,
+      };
+
+      const expiresAt = new Date(Date.now() + newTokens.expires_in * 1000);
+      const now = new Date();
+      const refreshTokenExpiresAt = new Date(Date.now() + newTokens.x_refresh_token_expires_in * 1000);
+
+      const result = await sql`
+        UPDATE quickbooks_connections
+        SET
+          access_token = ${newTokens.access_token},
+          refresh_token = ${newTokens.refresh_token},
+          token_expires_at = ${expiresAt.toISOString()},
+          refresh_token_created_at = ${now.toISOString()},
+          refresh_token_expires_at = ${refreshTokenExpiresAt.toISOString()},
+          last_refreshed_at = CURRENT_TIMESTAMP
+        WHERE user_id = ${connection.user_id}
+        RETURNING *
+      `;
+
+      console.log(`✅ Tokens refreshed successfully for user ${connection.user_id} (access expires: ${expiresAt.toISOString()}, refresh expires: ${refreshTokenExpiresAt.toISOString()})`);
+
+      return result[0] as QBConnection;
+    } catch (error: any) {
+      console.error(`❌ Error refreshing token for user ${connection.user_id} (attempt ${attempt}/${maxAttempts}):`, error.message || 'Unknown error');
+
+      // Fatal errors: don't retry, throw immediately
+      if (!isTransientError(error)) {
+        console.error('❌ Fatal error — refresh token is invalid/expired. User must reconnect.');
+        const fatalError = new Error('QuickBooks refresh token expired. Please reconnect to QuickBooks.');
+        (fatalError as any).fatal = true;
+        throw fatalError;
+      }
+
+      // Transient error: retry with backoff if attempts remain
+      if (attempt < maxAttempts) {
+        const delay = baseDelay * Math.pow(2, attempt - 1);
+        console.log(`⏳ Transient error, retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        // All retries exhausted — throw but don't mark as fatal
+        console.error(`❌ All ${maxAttempts} retry attempts exhausted for user ${connection.user_id}`);
+        const transientError = new Error(`Failed to refresh access token after ${maxAttempts} attempts: ${error.message || 'Unknown error'}`);
+        (transientError as any).fatal = false;
+        throw transientError;
+      }
+    }
+  }
+
+  // TypeScript needs this (unreachable)
+  throw new Error('Unexpected: refresh loop exited without return or throw');
+}
+
+/**
+ * Get valid access token (refresh if needed).
+ * Only returns null for fatal errors (invalid_grant) — transient errors are thrown
+ * so callers can distinguish "must reconnect" from "temporary problem".
  */
 export async function getValidAccessToken(userId: string, organizationId?: string): Promise<{
   accessToken: string;
   realmId: string;
 } | null> {
   let connection = await getConnection(userId, organizationId);
-  
+
   if (!connection) {
     console.error(`❌ No QuickBooks connection found for user ${userId}`);
     return null;
   }
-  
+
   const now = Date.now();
   const expiresAt = new Date(connection.token_expires_at).getTime();
   const refreshTokenAge = now - new Date(connection.refresh_token_created_at).getTime();
   const refreshTokenAgeDays = Math.floor(refreshTokenAge / (24 * 60 * 60 * 1000));
-  
+
   console.log(`📊 Token status for user ${userId}:`);
   console.log(`   - Access token expires: ${connection.token_expires_at}`);
   console.log(`   - Time until expiry: ${Math.floor((expiresAt - now) / 1000 / 60)} minutes`);
   console.log(`   - Refresh token age: ${refreshTokenAgeDays} days`);
-  
-  // Check if we need to refresh (either access token expired OR refresh token is old)
+
   const needsAccess = needsTokenRefresh(connection);
   const needsRefreshRenewal = needsRefreshTokenRenewal(connection);
-  
+
   if (needsAccess) {
     console.log('⚠️  Access token needs refresh, refreshing...');
     try {
       connection = await refreshAccessToken(connection);
     } catch (error: any) {
-      console.error('❌ Failed to refresh access token:', error.message);
-      // If refresh fails, the connection is likely invalid
-      return null;
+      if (error.fatal) {
+        // Refresh token is truly dead — user must reconnect
+        console.error('❌ Fatal: refresh token expired, user must reconnect');
+        return null;
+      }
+      // Transient error — don't kill the connection, re-throw
+      throw error;
     }
   } else if (needsRefreshRenewal) {
-    // Proactive refresh token renewal (Option 3: Hybrid - user activity trigger)
     console.log(`⚠️  Refresh token is ${refreshTokenAgeDays} days old, proactively renewing...`);
     try {
       connection = await refreshAccessToken(connection);
     } catch (error: any) {
-      console.error('❌ Failed to proactively refresh token:', error.message);
-      // If refresh fails, the connection is likely invalid
-      return null;
+      // Proactive renewal failed — not critical, access token is still valid
+      console.warn('⚠️  Proactive refresh token renewal failed (non-fatal):', error.message);
     }
   } else {
     console.log('✅ Access token is valid, no refresh needed');
   }
-  
+
   return {
     accessToken: connection.access_token,
     realmId: connection.realm_id,
@@ -385,27 +427,73 @@ function generateState(): string {
 }
 
 /**
- * Get stale connections for background refresh (Option 3: Background job part)
+ * Check connection health by reading DB state — does NOT trigger a refresh.
+ * Returns connected: true if the refresh token hasn't expired yet.
+ * Used by the status endpoint to avoid the "check status → refresh fails → show reconnect" bug.
+ */
+export async function checkConnectionHealth(userId: string, organizationId?: string): Promise<{
+  connected: boolean;
+  companyName: string | null;
+  connectedAt: Date | null;
+  realmId: string | null;
+  error?: string;
+}> {
+  const connection = await getConnection(userId, organizationId);
+
+  if (!connection) {
+    return { connected: false, companyName: null, connectedAt: null, realmId: null };
+  }
+
+  // Check if the refresh token has expired (the only thing that truly kills a connection)
+  const now = Date.now();
+  const refreshTokenExpiry = connection.refresh_token_expires_at
+    ? new Date(connection.refresh_token_expires_at).getTime()
+    : new Date(connection.refresh_token_created_at).getTime() + QB_CONFIG.refreshTokenLifetime;
+
+  if (now > refreshTokenExpiry) {
+    console.warn(`⚠ Refresh token expired for user ${userId} (expired at ${new Date(refreshTokenExpiry).toISOString()})`);
+    return {
+      connected: false,
+      companyName: connection.company_name,
+      connectedAt: connection.connected_at,
+      realmId: connection.realm_id,
+      error: 'refresh_token_expired',
+    };
+  }
+
+  return {
+    connected: true,
+    companyName: connection.company_name,
+    connectedAt: connection.connected_at,
+    realmId: connection.realm_id,
+  };
+}
+
+/**
+ * Get stale connections for background refresh.
  * Returns connections where:
- * - Refresh token is 60+ days old
- * - Last refresh was more than 7 days ago (avoid too frequent background refreshes)
- * - Token hasn't expired yet (still salvageable)
+ * - Refresh token is 14+ days old (background threshold)
+ * - Last refresh was more than 1 day ago (avoid over-refreshing)
+ * - Refresh token hasn't expired yet (still salvageable)
  */
 export async function getStaleConnectionsForBackgroundRefresh(): Promise<QBConnection[]> {
   try {
     const now = new Date();
-    const sixtyDaysAgo = new Date(now.getTime() - QB_CONFIG.refreshTokenBackgroundThreshold);
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    
+    const backgroundThresholdAgo = new Date(now.getTime() - QB_CONFIG.refreshTokenBackgroundThreshold);
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
     const result = await sql`
       SELECT * FROM quickbooks_connections
-      WHERE refresh_token_created_at < ${sixtyDaysAgo.toISOString()}
-      AND last_refreshed_at < ${sevenDaysAgo.toISOString()}
-      AND token_expires_at > ${now.toISOString()}
+      WHERE refresh_token_created_at < ${backgroundThresholdAgo.toISOString()}
+      AND last_refreshed_at < ${oneDayAgo.toISOString()}
+      AND (
+        refresh_token_expires_at > ${now.toISOString()}
+        OR (refresh_token_expires_at IS NULL AND refresh_token_created_at > ${new Date(now.getTime() - QB_CONFIG.refreshTokenLifetime).toISOString()})
+      )
       ORDER BY refresh_token_created_at ASC
       LIMIT 100
     `;
-    
+
     return result as QBConnection[];
   } catch (error) {
     console.error('Error getting stale connections:', error);

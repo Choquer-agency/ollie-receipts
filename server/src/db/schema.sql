@@ -211,3 +211,11 @@ ALTER TABLE quickbooks_connections ADD COLUMN IF NOT EXISTS organization_id UUID
 -- Unique index: one QBO connection per org (when org is set)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_qb_connections_org_id ON quickbooks_connections(organization_id) WHERE organization_id IS NOT NULL;
 
+-- Add refresh_token_expires_at to track refresh token expiry separately from access token
+ALTER TABLE quickbooks_connections ADD COLUMN IF NOT EXISTS refresh_token_expires_at TIMESTAMP WITH TIME ZONE;
+
+-- Backfill: existing rows get refresh_token_created_at + 100 days
+UPDATE quickbooks_connections
+SET refresh_token_expires_at = refresh_token_created_at + INTERVAL '100 days'
+WHERE refresh_token_expires_at IS NULL;
+

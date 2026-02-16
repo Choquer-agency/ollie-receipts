@@ -28,9 +28,13 @@ export const QB_CONFIG = {
   accessTokenLifetime: 60 * 60 * 1000, // 1 hour
   refreshTokenLifetime: 100 * 24 * 60 * 60 * 1000, // 100 days
   
-  // Proactive refresh token renewal settings (Option 3: Hybrid approach)
-  refreshTokenProactiveThreshold: 30 * 24 * 60 * 60 * 1000, // 30 days - refresh on user activity after this
-  refreshTokenBackgroundThreshold: 60 * 24 * 60 * 60 * 1000, // 60 days - background job processes after this
+  // Proactive refresh token renewal settings (Hybrid approach)
+  refreshTokenProactiveThreshold: 7 * 24 * 60 * 60 * 1000, // 7 days - refresh on user activity after this
+  refreshTokenBackgroundThreshold: 14 * 24 * 60 * 60 * 1000, // 14 days - background job processes after this
+
+  // Retry settings for transient errors
+  refreshRetryAttempts: 3,
+  refreshRetryBaseDelay: 1000, // 1 second, doubles each attempt
 };
 
 // Validate required environment variables
