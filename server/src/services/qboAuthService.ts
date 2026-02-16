@@ -298,6 +298,19 @@ export async function refreshAccessToken(connection: QBConnection): Promise<QBCo
       // Fatal errors: don't retry, throw immediately
       if (!isTransientError(error)) {
         console.error('❌ Fatal error — refresh token is invalid/expired. User must reconnect.');
+
+        // Mark the connection as dead in DB so checkConnectionHealth() reports disconnected
+        try {
+          await sql`
+            UPDATE quickbooks_connections
+            SET refresh_token_expires_at = CURRENT_TIMESTAMP
+            WHERE user_id = ${connection.user_id}
+          `;
+          console.log(`🔒 Marked QBO connection as dead for user ${connection.user_id}`);
+        } catch (dbError: any) {
+          console.error(`⚠️ Failed to mark connection as dead in DB:`, dbError.message);
+        }
+
         const fatalError = new Error('QuickBooks refresh token expired. Please reconnect to QuickBooks.');
         (fatalError as any).fatal = true;
         throw fatalError;
