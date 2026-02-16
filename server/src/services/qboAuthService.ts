@@ -230,10 +230,14 @@ function isTransientError(error: any): boolean {
   const statusCode = error.response?.status || error.statusCode;
   if (statusCode === 401) return false;
 
+  // Fatal: intuit-oauth library returns these messages when refresh token is dead
+  const msg = (error.message || error.error_description || '').toLowerCase();
+  if (msg.includes('refresh token is invalid') || msg.includes('please authorize again') || msg.includes('token expired')) return false;
+
   // Transient: rate limiting, server errors, network issues
   if (statusCode === 429 || (statusCode >= 500 && statusCode <= 504)) return true;
   if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') return true;
-  if (error.message?.includes('network') || error.message?.includes('timeout')) return true;
+  if (msg.includes('network') || msg.includes('timeout') || msg.includes('econnreset')) return true;
 
   // Default: treat unknown errors as transient (don't kill connection for unknowns)
   return true;
