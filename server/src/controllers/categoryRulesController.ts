@@ -6,6 +6,7 @@ import {
   updateRule,
   deleteRule,
   matchRule,
+  applyRuleToExistingReceipts,
 } from '../services/categoryRulesService.js';
 
 /**
@@ -52,13 +53,17 @@ export const createRuleEndpoint = async (req: AuthenticatedRequest, res: Respons
       receiptId,
     });
 
+    // Retroactively apply to existing uncategorized receipts
+    const appliedCount = await applyRuleToExistingReceipts(rule);
+
     res.status(201).json({
       id: rule.id,
       vendorPattern: rule.vendor_pattern,
       qbCategoryId: rule.qb_category_id,
       matchType: rule.match_type,
       isActive: rule.is_active,
-      timesApplied: rule.times_applied,
+      timesApplied: rule.times_applied + appliedCount,
+      appliedCount,
     });
   } catch (error) {
     console.error('Error creating category rule:', error);
@@ -85,13 +90,20 @@ export const updateRuleEndpoint = async (req: AuthenticatedRequest, res: Respons
       return res.status(404).json({ error: 'Rule not found' });
     }
 
+    // If category changed, retroactively apply to existing uncategorized receipts
+    let appliedCount = 0;
+    if (qbCategoryId !== undefined) {
+      appliedCount = await applyRuleToExistingReceipts(updated);
+    }
+
     res.json({
       id: updated.id,
       vendorPattern: updated.vendor_pattern,
       qbCategoryId: updated.qb_category_id,
       matchType: updated.match_type,
       isActive: updated.is_active,
-      timesApplied: updated.times_applied,
+      timesApplied: updated.times_applied + appliedCount,
+      appliedCount,
     });
   } catch (error) {
     console.error('Error updating category rule:', error);

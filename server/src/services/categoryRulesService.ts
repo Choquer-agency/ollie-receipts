@@ -208,3 +208,59 @@ export async function incrementRuleApplied(ruleId: string): Promise<void> {
     UPDATE category_rules SET times_applied = times_applied + 1 WHERE id = ${ruleId}
   `;
 }
+
+/**
+ * Apply a category rule retroactively to existing receipts that match the vendor pattern.
+ * Only targets unpublished receipts without an existing category (qb_account_id IS NULL).
+ * Returns the number of receipts updated.
+ */
+export async function applyRuleToExistingReceipts(rule: CategoryRule): Promise<number> {
+  // Need the qb_account_id and category_name from the joined qb_categories table
+  const categoryRows = await sql`
+    SELECT qb_account_id, name FROM qb_categories WHERE id = ${rule.qb_category_id}
+  `;
+  if (categoryRows.length === 0) return 0;
+
+  const { qb_account_id: qbAccountId, name: categoryName } = categoryRows[0];
+
+  let result;
+  if (rule.match_type === 'exact') {
+    result = await sql`
+      UPDATE receipts
+      SET qb_account_id = ${qbAccountId},
+          suggested_category = ${categoryName},
+          auto_categorized = true,
+          auto_categorized_rule_id = ${rule.id},
+          updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = ${rule.user_id}
+        AND LOWER(vendor_name) = LOWER(${rule.vendor_pattern})
+        AND status != 'published'
+        AND qb_account_id IS NULL
+    `;
+  } else {
+    // contains match: receipt vendor_name contains the pattern
+    result = await sql`
+      UPDATE receipts
+      SET qb_account_id = ${qbAccountId},
+          suggested_category = ${categoryName},
+          auto_categorized = true,
+          auto_categorized_rule_id = ${rule.id},
+          updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = ${rule.user_id}
+        AND LOWER(vendor_name) LIKE '%' || LOWER(${rule.vendor_pattern}) || '%'
+        AND status != 'published'
+        AND qb_account_id IS NULL
+    `;
+  }
+
+  const count = (result as any).count ?? 0;
+
+  // Increment times_applied by the number of retroactively categorized receipts
+  if (count > 0) {
+    await sql`
+      UPDATE category_rules SET times_applied = times_applied + ${count} WHERE id = ${rule.id}
+    `;
+  }
+
+  return count;
+}
