@@ -147,12 +147,17 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
           setExpenseAccounts(expenses);
         }
 
-        // Payment accounts still require a live fetch
-        const payments = await fetchPaymentAccounts();
-        setPaymentAccounts(payments);
+        // Payment accounts still require a live fetch — fail gracefully
+        try {
+          const payments = await fetchPaymentAccounts();
+          setPaymentAccounts(payments);
 
-        if (!formData.payment_account_id && payments.length > 0) {
-          setFormData(prev => ({ ...prev, payment_account_id: payments.find(p => p.type === 'Credit Card')?.id || payments[0].id }));
+          if (!formData.payment_account_id && payments.length > 0) {
+            setFormData(prev => ({ ...prev, payment_account_id: payments.find(p => p.type === 'Credit Card')?.id || payments[0].id }));
+          }
+        } catch (err: any) {
+          console.error('Payment accounts unavailable (non-fatal):', err);
+          setPaymentAccounts([]);
         }
       } catch (err: any) {
         console.error('Error fetching QuickBooks accounts:', err);

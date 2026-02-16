@@ -251,14 +251,19 @@ const SignedInApp: React.FC = () => {
           const qboStatus = await checkQBOStatus();
           setIsQboConnected(qboStatus.connected);
 
-          // Sync categories and load rules in background when QB is connected
+          // Always load cached categories + rules (works without QB)
+          Promise.all([categoryApi.getAll(), categoryRulesApi.getAll()])
+            .then(([cats, rules]) => {
+              setCachedCategories(cats);
+              setCategoryRules(rules);
+            })
+            .catch(err => console.error('Category load failed (non-fatal):', err));
+
+          // Sync fresh data from QB when connected
           if (qboStatus.connected) {
             categoryApi.sync()
-              .then(() => Promise.all([categoryApi.getAll(), categoryRulesApi.getAll()]))
-              .then(([cats, rules]) => {
-                setCachedCategories(cats);
-                setCategoryRules(rules);
-              })
+              .then(() => categoryApi.getAll())
+              .then(cats => setCachedCategories(cats))
               .catch(err => console.error('Category sync failed (non-fatal):', err));
           }
         }
