@@ -78,7 +78,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onDisconnectQBO }) => {
           display: 'flex',
           alignItems: 'center',
           gap: '8px',
-          padding: '6px 12px 6px 6px',
+          padding: '4px 10px 4px 6px',
           backgroundColor: 'transparent',
           border: '1px solid var(--border-strong)',
           borderRadius: 'var(--radius-md)',
@@ -95,8 +95,8 @@ const UserMenu: React.FC<UserMenuProps> = ({ onDisconnectQBO }) => {
         {/* Avatar - SVG Icon */}
         <div
           style={{
-            width: '32px',
-            height: '32px',
+            width: '24px',
+            height: '24px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -106,8 +106,8 @@ const UserMenu: React.FC<UserMenuProps> = ({ onDisconnectQBO }) => {
             src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgZmlsbD0iIzAwMDAwMCIgdmlld0JveD0iMCAwIDI1NiAyNTYiPjxwYXRoIGQ9Ik0yMzAuOTIsMjEyYy0xNS4yMy0yNi4zMy0zOC43LTQ1LjIxLTY2LjA5LTU0LjE2YTcyLDcyLDAsMSwwLTczLjY2LDBDNjMuNzgsMTY2Ljc4LDQwLjMxLDE4NS42NiwyNS4wOCwyMTJhOCw4LDAsMSwwLDEzLjg1LDhjMTguODQtMzIuNTYsNTIuMTQtNTIsODkuMDctNTJzNzAuMjMsMTkuNDQsODkuMDcsNTJhOCw4LDAsMSwwLDEzLjg1LThaTTcyLDk2YTU2LDU2LDAsMSwxLDU2LDU2QTU2LjA2LDU2LjA2LDAsMCwxLDcyLDk2WiI+PC9wYXRoPjwvc3ZnPg=="
             alt="User"
             style={{
-              width: '32px',
-              height: '32px',
+              width: '24px',
+              height: '24px',
             }}
           />
         </div>
@@ -115,8 +115,8 @@ const UserMenu: React.FC<UserMenuProps> = ({ onDisconnectQBO }) => {
         {/* User Name */}
         <span
           style={{
-            fontSize: 'var(--font-size-body)',
-            fontWeight: 'var(--font-weight-medium)',
+            fontSize: 'var(--font-size-small)',
+            fontWeight: 'var(--font-weight-semibold)',
             color: 'var(--text-primary)',
             maxWidth: '150px',
             overflow: 'hidden',

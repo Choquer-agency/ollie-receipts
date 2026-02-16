@@ -31,7 +31,7 @@ const InputGroup: React.FC<InputGroupProps> = ({ label, children, required = fal
     marginBottom: '16px',
   }}>
     <label style={{
-      fontSize: 'var(--font-size-small)',
+      fontSize: 'var(--font-size-body)',
       fontWeight: 'var(--font-weight-semibold)',
       color: 'var(--text-secondary)',
     }}>
@@ -466,7 +466,7 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     borderRadius: 'var(--radius-md)',
     cursor: 'pointer',
     transition: 'var(--transition-default)',
-    border: 'none',
+    border: '1px solid',
   };
 
   return (
@@ -711,7 +711,7 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
               <h3 style={{
                 fontSize: '1.35rem',
                 fontWeight: 'var(--font-weight-bold)',
-                color: 'var(--text-tertiary)',
+                color: 'var(--heading-accent-light)',
                 fontFamily: 'var(--font-heading)',
                 marginBottom: '16px',
                 borderBottom: '1px solid var(--border-default)',
@@ -893,7 +893,7 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
               <h3 style={{
                 fontSize: '1.35rem',
                 fontWeight: 'var(--font-weight-bold)',
-                color: 'var(--text-tertiary)',
+                color: 'var(--heading-accent-light)',
                 fontFamily: 'var(--font-heading)',
                 marginBottom: '16px',
                 borderBottom: '1px solid var(--border-default)',
@@ -1081,7 +1081,7 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
               <h3 style={{
                 fontSize: '1.35rem',
                 fontWeight: 'var(--font-weight-bold)',
-                color: 'var(--text-tertiary)',
+                color: 'var(--heading-accent-light)',
                 fontFamily: 'var(--font-heading)',
                 marginBottom: '16px',
                 borderBottom: '1px solid var(--border-default)',

@@ -514,11 +514,11 @@ const SignedInApp: React.FC = () => {
         fontWeight: 'var(--font-weight-semibold)',
         color: 'var(--status-success-text)',
         backgroundColor: 'var(--status-success-bg)',
-        padding: '4px 10px',
+        padding: '6px 12px',
         borderRadius: 'var(--radius-md)',
         border: '1px solid var(--status-success-text)',
       }}>
-        <CheckCircle2 size={12} /> QBO Connected
+        <CheckCircle2 size={14} /> QBO Connected
       </span>
     );
   };
