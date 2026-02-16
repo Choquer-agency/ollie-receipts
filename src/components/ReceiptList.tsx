@@ -1,15 +1,14 @@
 import React from 'react';
 import { Receipt, ReceiptStatus } from '../types';
 import StatusBadge from './StatusBadge';
-import { FileText, BrainCircuit, Square } from 'lucide-react';
+import { FileText, Square } from 'lucide-react';
 
 interface ReceiptListProps {
   receipts: Receipt[];
   onSelect: (receipt: Receipt) => void;
-  showUploadedBy?: boolean;
 }
 
-const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect, showUploadedBy = false }) => {
+const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect }) => {
   // Sort: Needs Review (OCR_COMPLETE) first, then Reviewed, then date descending
   const sortedReceipts = [...receipts].sort((a, b) => {
     const score = (status: ReceiptStatus) => {
@@ -107,8 +106,7 @@ const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect, showUploa
             <div style={{ width: '128px' }}>Status</div>
             <div style={{ width: '128px' }}>Date</div>
             <div style={{ flex: 1 }}>Supplier</div>
-            <div style={{ width: '256px' }}>Category</div>
-            {showUploadedBy && <div style={{ width: '128px' }}>Uploaded by</div>}
+            <div style={{ width: '200px' }}>Category</div>
             <div style={{ width: '128px', textAlign: 'right' }}>Total</div>
             <div style={{ width: '96px', textAlign: 'right' }}>Tax</div>
             <div style={{ width: '128px' }}></div>
@@ -187,11 +185,10 @@ const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect, showUploa
                   </div>
 
                   {/* Category */}
-                  <div style={{ width: '256px', flexShrink: 0, paddingRight: '16px' }}>
+                  <div style={{ width: '200px', flexShrink: 0, paddingRight: '16px' }}>
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
                       backgroundColor: 'var(--background-elevated)',
                       border: '1px solid var(--border-default)',
                       color: 'var(--text-secondary)',
@@ -204,28 +201,12 @@ const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect, showUploa
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
-                        marginRight: '8px',
                       }}>
                         {receipt.suggested_category || 'Uncategorized'}
                       </span>
-                      <BrainCircuit size={14} style={{ color: 'var(--text-tertiary)' }} />
                     </div>
                   </div>
 
-                  {/* Uploaded by */}
-                  {showUploadedBy && (
-                    <div style={{
-                      width: '128px',
-                      flexShrink: 0,
-                      fontSize: 'var(--font-size-small)',
-                      color: 'var(--text-secondary)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {receipt.uploaded_by_name || '--'}
-                    </div>
-                  )}
 
                   {/* Total */}
                   <div style={{

@@ -66,7 +66,7 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
   const getLabel = (s: ReceiptStatus) => {
     switch (s) {
       case ReceiptStatus.UPLOADED: return 'Processing';
-      case ReceiptStatus.OCR_COMPLETE: return 'To review';
+      case ReceiptStatus.OCR_COMPLETE: return 'To Review';
       case ReceiptStatus.REVIEWED: return 'Ready';
       case ReceiptStatus.PUBLISHED: return 'Published';
       case ReceiptStatus.ERROR: return 'Error';

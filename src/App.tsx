@@ -226,7 +226,6 @@ const SignedInApp: React.FC = () => {
   const isAdmin = orgRole === 'org:admin';
   const isAccountant = orgRole === 'org:accountant';
   const isBookkeeper = orgRole === 'org:bookkeeper';
-  const isEmployee = orgRole === 'org:employee';
   const canReview = !isInOrg || isAdmin || isAccountant || isBookkeeper;
   const canPublish = !isInOrg || isAdmin || isAccountant || isBookkeeper;
   const canManageTeam = isInOrg && (isAdmin || isAccountant);
@@ -663,7 +662,6 @@ const SignedInApp: React.FC = () => {
                     <ReceiptList
                       receipts={getCurrentList()}
                       onSelect={handleSelectReceipt}
-                      showUploadedBy={isInOrg && !isEmployee}
                     />
                  </div>
                </>
