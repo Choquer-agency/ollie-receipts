@@ -11,7 +11,7 @@ import { matchRule, incrementRuleApplied } from '../services/categoryRulesServic
 
 // Encode the path portion of an R2 URL (encode each segment, preserving slashes)
 function encodeR2Path(path: string): string {
-  return path.split('/').map(segment => encodeURIComponent(segment)).join('/');
+  return path.split('/').map(segment => encodeURIComponent(decodeURIComponent(segment))).join('/');
 }
 
 // Rewrite old R2 public URLs to the current custom domain

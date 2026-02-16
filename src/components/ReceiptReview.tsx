@@ -109,6 +109,8 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
 
   const [isPublishing, setIsPublishing] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rulePrompt, setRulePrompt] = useState<{
     vendorName: string;
@@ -119,6 +121,15 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     existingRuleId?: string;
   } | null>(null);
   const [isCreatingRule, setIsCreatingRule] = useState(false);
+
+  // Reset image loading state when receipt changes
+  useEffect(() => {
+    setImageLoaded(false);
+    setImageError(false);
+  }, [receipt.id]);
+
+  const isPdf = receipt.image_url?.toLowerCase().endsWith('.pdf') ||
+    receipt.original_filename?.toLowerCase().endsWith('.pdf');
 
   useEffect(() => {
     const loadAccounts = async () => {
@@ -558,19 +569,80 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
              display: 'flex',
              alignItems: 'center',
              justifyContent: 'center',
-             padding: '32px',
+             padding: isPdf ? '0' : '32px',
              overflow: 'hidden',
            }}>
-              <img
-                src={receipt.image_url}
-                alt="Receipt"
-                style={{
-                  maxHeight: '100%',
-                  maxWidth: '100%',
-                  objectFit: 'contain',
-                  boxShadow: 'var(--shadow-overlay)',
-                }}
-              />
+              {isPdf ? (
+                <iframe
+                  src={receipt.image_url || ''}
+                  title="Receipt PDF"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                  }}
+                />
+              ) : imageError ? (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '12px',
+                  color: 'var(--text-tertiary)',
+                }}>
+                  <AlertCircle size={32} />
+                  <span style={{ fontSize: 'var(--font-size-small)' }}>Failed to load image</span>
+                  {receipt.image_url && (
+                    <a
+                      href={receipt.image_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        fontSize: 'var(--font-size-small)',
+                        color: 'var(--primary)',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Open in new tab
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {!imageLoaded && (
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '12px',
+                      color: 'var(--text-tertiary)',
+                    }}>
+                      <div style={{
+                        width: '24px',
+                        height: '24px',
+                        border: '2px solid var(--border-default)',
+                        borderTopColor: 'var(--primary)',
+                        borderRadius: '50%',
+                        animation: 'spin 0.8s linear infinite',
+                      }} />
+                      <span style={{ fontSize: 'var(--font-size-small)' }}>Loading receipt...</span>
+                    </div>
+                  )}
+                  <img
+                    src={receipt.image_url}
+                    alt="Receipt"
+                    onLoad={() => setImageLoaded(true)}
+                    onError={() => setImageError(true)}
+                    style={{
+                      maxHeight: '100%',
+                      maxWidth: '100%',
+                      objectFit: 'contain',
+                      boxShadow: 'var(--shadow-overlay)',
+                      display: imageLoaded ? 'block' : 'none',
+                    }}
+                  />
+                </>
+              )}
            </div>
            <div style={{
              position: 'absolute',
@@ -1146,6 +1218,12 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
         </div>
       </div>
 
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 };
