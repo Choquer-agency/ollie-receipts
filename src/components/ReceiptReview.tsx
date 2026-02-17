@@ -408,8 +408,9 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
       
       onUpdate(publishedReceipt);
       onBack();
-    } catch (err) {
-      setError("Failed to publish to QuickBooks. Please try again.");
+    } catch (err: any) {
+      const serverMessage = err.response?.data?.details || err.response?.data?.error;
+      setError(serverMessage || "Failed to publish to QuickBooks. Please try again.");
     } finally {
       setIsPublishing(false);
     }
