@@ -258,8 +258,13 @@ export async function refreshAccessToken(connection: QBConnection): Promise<QBCo
       console.log(`🔄 Refreshing access token for user ${connection.user_id} (attempt ${attempt}/${maxAttempts})...`);
 
       oauthClient.setToken({
+        access_token: connection.access_token,
         refresh_token: connection.refresh_token,
+        token_type: 'bearer',
+        expires_in: Math.max(0, Math.floor((new Date(connection.token_expires_at).getTime() - new Date(connection.refresh_token_created_at).getTime()) / 1000)),
+        x_refresh_token_expires_in: Math.max(0, Math.floor((new Date(connection.refresh_token_expires_at || Date.now()).getTime() - new Date(connection.refresh_token_created_at).getTime()) / 1000)),
         realmId: connection.realm_id,
+        createdAt: new Date(connection.refresh_token_created_at).getTime(),
       });
 
       const authResponse = await oauthClient.refresh();
