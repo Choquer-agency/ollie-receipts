@@ -1,7 +1,5 @@
+import './env.js';
 import { S3Client } from '@aws-sdk/client-s3';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 if (!process.env.CLOUDFLARE_R2_ACCOUNT_ID) {
   throw new Error('CLOUDFLARE_R2_ACCOUNT_ID is not set');

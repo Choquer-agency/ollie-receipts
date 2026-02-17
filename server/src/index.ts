@@ -1,6 +1,6 @@
+import './config/env.js';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { clerkMiddleware } from '@clerk/express';
@@ -11,8 +11,7 @@ import categoryRulesRoutes from './routes/categoryRules.js';
 import orgRoutes from './routes/org.js';
 import { validateQBConfig } from './config/quickbooks.js';
 import { startQuickBooksTokenRefreshJob } from './jobs/qboTokenRefresh.js';
-
-dotenv.config();
+import { isLangfuseConfigured } from './services/langfuseService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -76,6 +75,13 @@ app.listen(PORT, () => {
   }
   console.log(`Accepting requests from: ${FRONTEND_URL}`);
   
+  // Langfuse observability
+  if (isLangfuseConfigured()) {
+    console.log('✓ Langfuse observability configured');
+  } else {
+    console.log('⚠ Langfuse not configured (LANGFUSE_SECRET_KEY / LANGFUSE_PUBLIC_KEY missing)');
+  }
+
   // Validate QuickBooks configuration
   const qbConfig = validateQBConfig();
   if (qbConfig.valid) {

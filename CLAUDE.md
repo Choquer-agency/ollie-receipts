@@ -23,7 +23,7 @@ npm run build:frontend    # tsc && vite build
 npm run build:backend     # cd server && npm install && npm run build
 ```
 
-Both frontend and backend must run simultaneously for local development. Frontend `.env` lives at the project root; backend `.env` lives in `server/`.
+Both frontend and backend must run simultaneously for local development. All environment variables (frontend and backend) live in a single root `.env` file. The backend loads it via `server/src/config/env.ts` which resolves the path relative to `__dirname`.
 
 ## Architecture
 

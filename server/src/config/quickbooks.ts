@@ -1,6 +1,4 @@
-import dotenv from 'dotenv';
-
-dotenv.config();
+import './env.js';
 
 export const QB_CONFIG = {
   clientId: process.env.INTUIT_CLIENT_ID || '',
