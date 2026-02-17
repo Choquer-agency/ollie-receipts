@@ -8,6 +8,7 @@ import {
   getUploadUrl,
   checkDuplicates,
 } from '../controllers/receiptController.js';
+import { processOcr } from '../controllers/ocrController.js';
 import { requireAuth, requireOrgRole } from '../middleware/auth.js';
 
 const router = Router();
@@ -25,6 +26,9 @@ router.get('/:id', getReceiptById);
 
 // Create - all roles
 router.post('/', createReceipt);
+
+// OCR processing - all roles
+router.post('/:id/ocr', processOcr);
 
 // Edit/Delete - admin + bookkeeper only
 router.patch('/:id', requireOrgRole('org:admin', 'org:accountant', 'org:bookkeeper'), updateReceipt);

@@ -7,6 +7,7 @@ import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL } from '../config/r2.js';
 import { z } from 'zod';
 import { logAuditEvent } from '../services/auditService.js';
 import { matchRule, incrementRuleApplied } from '../services/categoryRulesService.js';
+import { getLangfuse } from '../services/langfuseService.js';
 
 
 // Encode the path portion of an R2 URL (encode each segment, preserving slashes)
@@ -477,6 +478,28 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
         },
         ipAddress: req.ip,
       });
+    }
+
+    // OCR quality scoring: if user edits OCR fields on an ocr_complete receipt, score accuracy
+    const OCR_FIELDS = ['vendorName', 'transactionDate', 'total', 'tax', 'currency', 'suggestedCategory', 'description'];
+    const wasOcrComplete = current.status === 'ocr_complete' || current.status === 'reviewed';
+    const editedOcrFields = changedFields.filter(f => OCR_FIELDS.includes(f));
+
+    if (wasOcrComplete && editedOcrFields.length > 0) {
+      try {
+        const langfuse = getLangfuse();
+        if (langfuse) {
+          const accuracy = 1 - (editedOcrFields.length / OCR_FIELDS.length);
+          langfuse.score({
+            traceId: id,
+            name: 'ocr-accuracy',
+            value: parseFloat(accuracy.toFixed(2)),
+            comment: `Fields edited: ${editedOcrFields.join(', ')}`,
+          });
+        }
+      } catch (scoreErr) {
+        console.error('Langfuse OCR scoring failed (non-fatal):', scoreErr);
+      }
     }
 
     res.json(receipt[0]);
