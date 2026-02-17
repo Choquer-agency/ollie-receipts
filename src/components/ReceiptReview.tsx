@@ -162,8 +162,7 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
       } catch (err: any) {
         console.error('Error fetching QuickBooks accounts:', err);
         const isConnectionError = isQBOConnectionError(err);
-        const is500 = err.response?.status === 500;
-        if (isConnectionError || is500) {
+        if (isConnectionError) {
           setError('QuickBooks connection expired. Please reconnect to continue.');
           if (onQboConnectionError) {
             onQboConnectionError();
