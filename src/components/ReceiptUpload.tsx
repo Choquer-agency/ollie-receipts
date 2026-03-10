@@ -1,7 +1,6 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Upload, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Receipt, ReceiptStatus } from '../types';
-import { parseReceiptImage } from '../services/geminiService';
 import { receiptApi, setAuthToken } from '../services/apiService';
 import { useAuth } from '@clerk/clerk-react';
 import axios from 'axios';
@@ -12,18 +11,42 @@ interface ReceiptUploadProps {
 
 interface UploadStats {
   total: number;
-  completed: number;
+  uploaded: number;
   duplicates: number;
-  successful: number;
   errors: number;
+}
+
+interface OcrProgress {
+  total: number;
+  completed: number;
+}
+
+// Concurrency-limited parallel execution
+async function withConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  limit: number
+): Promise<T[]> {
+  const results: T[] = [];
+  const executing = new Set<Promise<void>>();
+  for (const task of tasks) {
+    const p = task().then(r => { results.push(r); executing.delete(p); });
+    executing.add(p);
+    if (executing.size >= limit) await Promise.race(executing);
+  }
+  await Promise.all(executing);
+  return results;
 }
 
 const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
   const { getToken } = useAuth();
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [stats, setStats] = useState<UploadStats>({ total: 0, completed: 0, duplicates: 0, successful: 0, errors: 0 });
+  const [stats, setStats] = useState<UploadStats>({ total: 0, uploaded: 0, duplicates: 0, errors: 0 });
+  const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null);
+  const [pendingOcrIds, setPendingOcrIds] = useState<Set<string>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollStartRef = useRef<number>(0);
 
   // Helper to refresh auth token before API calls
   const refreshAuthToken = async () => {
@@ -39,22 +62,100 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
     }
   };
 
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // Poll for OCR completion
+  useEffect(() => {
+    if (pendingOcrIds.size === 0) {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // Start polling
+    pollStartRef.current = Date.now();
+    pollIntervalRef.current = setInterval(async () => {
+      // Safety timeout: stop after 5 minutes
+      if (Date.now() - pollStartRef.current > 5 * 60 * 1000) {
+        console.warn('OCR polling timed out after 5 minutes');
+        setPendingOcrIds(new Set());
+        setOcrProgress(null);
+        return;
+      }
+
+      try {
+        const allReceipts = await receiptApi.getAll();
+        if (!Array.isArray(allReceipts)) return;
+
+        let completedCount = 0;
+        const stillPending = new Set<string>();
+
+        for (const id of pendingOcrIds) {
+          const receipt = allReceipts.find((r: Receipt) => r.id === id);
+          if (!receipt) {
+            // Receipt was deleted (duplicate detection on server)
+            completedCount++;
+          } else if (receipt.status !== ReceiptStatus.UPLOADED) {
+            // OCR completed (success or error)
+            completedCount++;
+            onUploadComplete(receipt);
+          } else {
+            stillPending.add(id);
+          }
+        }
+
+        if (completedCount > 0) {
+          setPendingOcrIds(stillPending);
+          setOcrProgress(prev => prev ? {
+            ...prev,
+            completed: prev.total - stillPending.size,
+          } : null);
+        }
+
+        if (stillPending.size === 0) {
+          setOcrProgress(null);
+          // Clear stats after a moment
+          setTimeout(() => setStats({ total: 0, uploaded: 0, duplicates: 0, errors: 0 }), 5000);
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+        // Continue polling, don't stop
+      }
+    }, 3000);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [pendingOcrIds.size]); // Re-run when pending count changes to 0
+
   const processFiles = async (files: FileList | File[]) => {
     if (files.length === 0) return;
 
-    setIsProcessing(true);
+    setIsUploading(true);
     const total = files.length;
-    setStats({ total, completed: 0, duplicates: 0, successful: 0, errors: 0 });
+    setStats({ total, uploaded: 0, duplicates: 0, errors: 0 });
 
     // Refresh auth token before starting uploads
     const token = await refreshAuthToken();
     if (!token) {
       console.error('Failed to get auth token');
-      setIsProcessing(false);
+      setIsUploading(false);
       return;
     }
 
-    // Step 1: Check for filename duplicates
+    // Step 1: Check for filename duplicates (batch)
     const filesToCheck = Array.from(files).map(file => ({
       filename: file.name,
     }));
@@ -71,121 +172,69 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
       console.error('Error checking duplicates:', err);
     }
 
-    const processFile = async (file: File) => {
-      try {
-        // Skip if duplicate filename
-        if (duplicateFilenames.has(file.name)) {
-          setStats(prev => ({ 
-            ...prev, 
-            duplicates: prev.duplicates + 1,
-          }));
-          return;
-        }
+    // Count filename duplicates upfront
+    const dupCount = Array.from(files).filter(f => duplicateFilenames.has(f.name)).length;
+    if (dupCount > 0) {
+      setStats(prev => ({ ...prev, duplicates: dupCount }));
+    }
 
-        // Step 2: Get signed upload URL from backend
+    // Generate a session ID to group this batch in Langfuse
+    const sessionId = crypto.randomUUID();
+
+    // Step 2: Upload all non-duplicate files to R2 with high concurrency
+    const filesToUpload = Array.from(files).filter(f => !duplicateFilenames.has(f.name));
+    const uploadedReceipts: Receipt[] = [];
+
+    const uploadTasks = filesToUpload.map(file => async () => {
+      try {
+        // Get signed upload URL
         const { uploadUrl, publicUrl } = await receiptApi.getUploadUrl(file.name, file.type);
 
-        // Step 3: Upload file directly to R2
+        // Upload file directly to R2
         await axios.put(uploadUrl, file, {
-          headers: {
-            'Content-Type': file.type,
-          },
+          headers: { 'Content-Type': file.type },
         });
 
-        // Step 4: Create receipt record with filename
+        // Create receipt record (no OCR yet)
         const newReceipt = await receiptApi.create({
           imageUrl: publicUrl,
           status: ReceiptStatus.UPLOADED,
           originalFilename: file.name,
         });
 
-        // Don't notify parent yet - wait for OCR to complete
-        // This prevents showing receipts that may be duplicates
+        // Show receipt in UI immediately
+        onUploadComplete(newReceipt);
+        uploadedReceipts.push(newReceipt);
 
-        // Step 5: Process with Gemini OCR
-        try {
-          // Read file for OCR
-          const reader = new FileReader();
-          const base64Promise = new Promise<string>((resolve) => {
-            reader.onload = () => resolve(reader.result as string);
-            reader.readAsDataURL(file);
-          });
-          const base64Data = await base64Promise;
-          const mimeType = file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
-
-          const parsedData = await parseReceiptImage(base64Data, mimeType);
-          
-          // Check for transaction detail duplicates
-          const transactionCheck = await receiptApi.checkDuplicates([{
-            filename: file.name,
-            transactionDetails: {
-              vendorName: parsedData.vendor_name,
-              transactionDate: parsedData.transaction_date,
-              tax: parsedData.tax,
-              total: parsedData.total,
-            },
-          }]);
-
-          const isTransactionDuplicate = transactionCheck.results[0]?.isDuplicate && 
-                                        transactionCheck.results[0]?.reason === 'transaction_details';
-
-          if (isTransactionDuplicate) {
-            // Delete the receipt we just created and mark as duplicate
-            await receiptApi.delete(newReceipt.id);
-            setStats(prev => ({ 
-              ...prev, 
-              duplicates: prev.duplicates + 1,
-            }));
-          } else {
-            // Update receipt with OCR data - convert snake_case to camelCase for API
-            const updatedReceipt = await receiptApi.update(newReceipt.id, {
-              vendorName: parsedData.vendor_name,
-              transactionDate: parsedData.transaction_date,
-              tax: parsedData.tax,
-              total: parsedData.total,
-              currency: parsedData.currency,
-              suggestedCategory: parsedData.suggested_category,
-              description: parsedData.description,
-              status: ReceiptStatus.OCR_COMPLETE,
-            });
-            
-            onUploadComplete(updatedReceipt);
-            setStats(prev => ({ 
-              ...prev, 
-              successful: prev.successful + 1,
-            }));
-          }
-        } catch (err) {
-          console.error('OCR error:', err);
-          const errorReceipt = await receiptApi.update(newReceipt.id, {
-            status: ReceiptStatus.ERROR,
-          });
-          onUploadComplete(errorReceipt);
-          setStats(prev => ({ 
-            ...prev, 
-            successful: prev.successful + 1,
-          }));
-        }
+        setStats(prev => ({ ...prev, uploaded: prev.uploaded + 1 }));
+        return newReceipt;
       } catch (err) {
-        console.error("File upload error", err);
-        setStats(prev => ({ 
-          ...prev, 
-          errors: prev.errors + 1 
-        }));
-      } finally {
-        setStats(prev => ({ ...prev, completed: prev.completed + 1 }));
+        console.error('File upload error:', err);
+        setStats(prev => ({ ...prev, errors: prev.errors + 1 }));
+        return null;
       }
-    };
+    });
 
-    // Process files in chunks of 3
-    const chunkSize = 3;
-    for (let i = 0; i < files.length; i += chunkSize) {
-      const chunk = Array.from(files).slice(i, i + chunkSize);
-      await Promise.all(chunk.map(file => processFile(file)));
+    await withConcurrency(uploadTasks, 10);
+
+    setIsUploading(false);
+
+    // Step 3: Trigger batch OCR on the server (fire and forget)
+    const receiptIds = uploadedReceipts.map(r => r.id);
+    if (receiptIds.length > 0) {
+      setOcrProgress({ total: receiptIds.length, completed: 0 });
+      setPendingOcrIds(new Set(receiptIds));
+
+      try {
+        await receiptApi.triggerBatchOcr(receiptIds, sessionId);
+      } catch (err) {
+        console.error('Failed to trigger batch OCR:', err);
+        // Receipts are uploaded but OCR won't run - they'll stay in 'uploaded' status
+      }
+    } else {
+      // All were duplicates or errors
+      setTimeout(() => setStats({ total: 0, uploaded: 0, duplicates: 0, errors: 0 }), 5000);
     }
-
-    setIsProcessing(false);
-    setTimeout(() => setStats({ total: 0, completed: 0, duplicates: 0, successful: 0, errors: 0 }), 5000);
   };
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -214,7 +263,8 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
     }
   };
 
-  const progressPercent = stats.total > 0 ? (stats.completed / stats.total) * 100 : 0;
+  const isProcessing = isUploading || ocrProgress !== null;
+  const uploadPercent = stats.total > 0 ? (stats.uploaded + stats.duplicates + stats.errors) / stats.total * 100 : 0;
 
   const dropzoneStyles: React.CSSProperties = {
     position: 'relative',
@@ -244,7 +294,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
 
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-4)' }}>
-      <div 
+      <div
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
@@ -252,10 +302,10 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
         onClick={() => inputRef.current?.click()}
         style={dropzoneStyles}
       >
-        <div style={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center', 
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
           justifyContent: 'center',
           paddingTop: 'var(--spacing-5)',
           paddingBottom: 'var(--spacing-6)',
@@ -266,28 +316,30 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
           {isProcessing ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-4)', width: '256px' }}>
               <div style={{ position: 'relative', width: '64px', height: '64px', margin: '0 auto' }}>
-                <Loader2 
-                  style={{ 
-                    width: '64px', 
-                    height: '64px', 
+                <Loader2
+                  style={{
+                    width: '64px',
+                    height: '64px',
                     color: 'var(--primary)',
                     animation: 'spin 1s linear infinite',
                     position: 'absolute',
                     inset: 0,
-                  }} 
+                  }}
                 />
-                <div style={{
-                  position: 'absolute',
-                  inset: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 'var(--font-size-tiny)',
-                  fontWeight: 'var(--font-weight-bold)',
-                  color: 'var(--primary)',
-                }}>
-                  {Math.round(progressPercent)}%
-                </div>
+                {isUploading && (
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 'var(--font-size-tiny)',
+                    fontWeight: 'var(--font-weight-bold)',
+                    color: 'var(--primary)',
+                  }}>
+                    {Math.round(uploadPercent)}%
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-1)' }}>
                  <p style={{
@@ -295,21 +347,27 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
                    fontWeight: 'var(--font-weight-bold)',
                    color: 'var(--text-primary)',
                  }}>
-                   Processing {stats.total} documents
+                   {isUploading
+                     ? `Uploading ${stats.total} documents`
+                     : `Processing ${ocrProgress?.total} receipts with AI`
+                   }
                  </p>
                  <p style={{
                    fontSize: 'var(--font-size-small)',
                    color: 'var(--text-secondary)',
                  }}>
-                   Extracting details using AI...
+                   {isUploading
+                     ? 'Sending files to storage...'
+                     : `${ocrProgress?.completed || 0} of ${ocrProgress?.total || 0} complete`
+                   }
                  </p>
               </div>
             </div>
           ) : (
             <>
               <div style={{ display: 'flex', marginLeft: '-8px', marginBottom: 'var(--spacing-4)' }}>
-                <div style={{ 
-                  ...iconContainerBaseStyles, 
+                <div style={{
+                  ...iconContainerBaseStyles,
                   backgroundColor: '#E8F5E9',
                   color: 'var(--primary)',
                 }}>
@@ -330,7 +388,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
                 marginBottom: 'var(--spacing-4)',
                 maxWidth: '320px',
               }}>
-                Drag and drop multiple receipts or PDFs here. 
+                Drag and drop multiple receipts or PDFs here.
                 Our AI will handle the rest.
               </p>
               <button style={{
@@ -350,19 +408,19 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
             </>
           )}
         </div>
-        
-        <input 
+
+        <input
           ref={inputRef}
-          type="file" 
+          type="file"
           style={{ display: 'none' }}
           multiple
-          accept="image/*,.pdf" 
-          onChange={handleChange} 
-          disabled={isProcessing} 
+          accept="image/*,.pdf"
+          onChange={handleChange}
+          disabled={isProcessing}
         />
       </div>
 
-      {stats.total > 0 && (
+      {(stats.total > 0 || ocrProgress) && (
         <div style={{
           backgroundColor: 'var(--background-elevated)',
           padding: 'var(--spacing-4)',
@@ -370,47 +428,95 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
           border: '1px solid var(--border-default)',
           boxShadow: 'var(--shadow-raised)',
         }}>
-           <div style={{
-             display: 'flex',
-             justifyContent: 'space-between',
-             alignItems: 'center',
-             marginBottom: 'var(--spacing-2)',
-           }}>
-              <span style={{
-                fontSize: 'var(--font-size-small)',
-                fontWeight: 'var(--font-weight-bold)',
-                color: 'var(--text-primary)',
-              }}>
-                {stats.completed === stats.total ? 'Upload complete' : `Uploading ${stats.total} items...`}
-              </span>
-              <span style={{
-                fontSize: 'var(--font-size-small)',
-                fontFamily: 'var(--font-mono)',
-                color: 'var(--text-tertiary)',
-              }}>
-                {stats.completed} / {stats.total}
-              </span>
-           </div>
-           <div style={{
-             width: '100%',
-             backgroundColor: 'var(--background-muted)',
-             height: '8px',
-             borderRadius: 'var(--radius-md)',
-             overflow: 'hidden',
-           }}>
-              <div 
-                style={{
-                  backgroundColor: 'var(--primary)',
-                  height: '100%',
-                  transition: 'width 500ms ease-out',
-                  width: `${progressPercent}%`,
-                  borderRadius: 'var(--radius-md)',
-                }}
-              />
-           </div>
-           {stats.completed === stats.total && (
-             <div style={{ marginTop: 'var(--spacing-3)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-2)' }}>
-               {stats.successful > 0 && (
+           {isUploading && (
+             <>
+               <div style={{
+                 display: 'flex',
+                 justifyContent: 'space-between',
+                 alignItems: 'center',
+                 marginBottom: 'var(--spacing-2)',
+               }}>
+                  <span style={{
+                    fontSize: 'var(--font-size-small)',
+                    fontWeight: 'var(--font-weight-bold)',
+                    color: 'var(--text-primary)',
+                  }}>
+                    Uploading {stats.total} items...
+                  </span>
+                  <span style={{
+                    fontSize: 'var(--font-size-small)',
+                    fontFamily: 'var(--font-mono)',
+                    color: 'var(--text-tertiary)',
+                  }}>
+                    {stats.uploaded} / {stats.total - stats.duplicates}
+                  </span>
+               </div>
+               <div style={{
+                 width: '100%',
+                 backgroundColor: 'var(--background-muted)',
+                 height: '8px',
+                 borderRadius: 'var(--radius-md)',
+                 overflow: 'hidden',
+               }}>
+                  <div
+                    style={{
+                      backgroundColor: 'var(--primary)',
+                      height: '100%',
+                      transition: 'width 500ms ease-out',
+                      width: `${uploadPercent}%`,
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  />
+               </div>
+             </>
+           )}
+
+           {!isUploading && ocrProgress && (
+             <>
+               <div style={{
+                 display: 'flex',
+                 justifyContent: 'space-between',
+                 alignItems: 'center',
+                 marginBottom: 'var(--spacing-2)',
+               }}>
+                  <span style={{
+                    fontSize: 'var(--font-size-small)',
+                    fontWeight: 'var(--font-weight-bold)',
+                    color: 'var(--text-primary)',
+                  }}>
+                    {ocrProgress.completed === ocrProgress.total ? 'Processing complete' : 'Extracting receipt data...'}
+                  </span>
+                  <span style={{
+                    fontSize: 'var(--font-size-small)',
+                    fontFamily: 'var(--font-mono)',
+                    color: 'var(--text-tertiary)',
+                  }}>
+                    {ocrProgress.completed} / {ocrProgress.total}
+                  </span>
+               </div>
+               <div style={{
+                 width: '100%',
+                 backgroundColor: 'var(--background-muted)',
+                 height: '8px',
+                 borderRadius: 'var(--radius-md)',
+                 overflow: 'hidden',
+               }}>
+                  <div
+                    style={{
+                      backgroundColor: 'var(--primary)',
+                      height: '100%',
+                      transition: 'width 500ms ease-out',
+                      width: `${ocrProgress.total > 0 ? (ocrProgress.completed / ocrProgress.total) * 100 : 0}%`,
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  />
+               </div>
+             </>
+           )}
+
+           {!isUploading && !ocrProgress && stats.total > 0 && (
+             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-2)' }}>
+               {stats.uploaded > 0 && (
                  <div style={{
                    display: 'flex',
                    alignItems: 'center',
@@ -419,7 +525,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
                    fontWeight: 'var(--font-weight-semibold)',
                    color: 'var(--status-success-text)',
                  }}>
-                   <CheckCircle2 size={14} /> {stats.successful} {stats.successful === 1 ? 'receipt' : 'receipts'} ready for review below
+                   <CheckCircle2 size={14} /> {stats.uploaded} {stats.uploaded === 1 ? 'receipt' : 'receipts'} processed
                  </div>
                )}
                {stats.duplicates > 0 && (
@@ -462,4 +568,3 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
 };
 
 export default ReceiptUpload;
-

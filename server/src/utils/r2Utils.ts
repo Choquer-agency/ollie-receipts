@@ -1,4 +1,4 @@
-import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import fetch from 'node-fetch';
 import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL } from '../config/r2.js';
 
@@ -50,4 +50,23 @@ export async function downloadFromR2(imageUrl: string): Promise<{
   const fileName = decodeURIComponent(urlPath.split('/').pop() || 'receipt.jpg');
 
   return { buffer, contentType, fileName };
+}
+
+/**
+ * Extract the R2 object key from an image URL and delete it from R2.
+ * Silently ignores non-R2 URLs and deletion errors.
+ */
+export async function deleteFromR2(imageUrl: string): Promise<void> {
+  const isCurrentR2 = R2_PUBLIC_URL && imageUrl.startsWith(R2_PUBLIC_URL);
+  const receiptsIdx = imageUrl.indexOf('/receipts/');
+  const isOldR2 = !isCurrentR2 && receiptsIdx !== -1;
+
+  if (!isCurrentR2 && !isOldR2) return;
+
+  const rawKey = isCurrentR2
+    ? imageUrl.replace(`${R2_PUBLIC_URL}/`, '')
+    : imageUrl.substring(receiptsIdx + 1);
+  const key = decodeURIComponent(rawKey);
+
+  await r2Client.send(new DeleteObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
 }

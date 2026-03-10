@@ -97,6 +97,16 @@ export const receiptApi = {
     return response.data;
   },
 
+  ocr: async (id: string, sessionId: string) => {
+    const response = await api.post(`/api/receipts/${id}/ocr`, { sessionId });
+    return response.data;
+  },
+
+  triggerBatchOcr: async (receiptIds: string[], sessionId: string) => {
+    const response = await api.post('/api/receipts/batch-ocr', { receiptIds, sessionId });
+    return response.data;
+  },
+
   checkDuplicates: async (files: Array<{
     filename: string;
     transactionDetails?: {

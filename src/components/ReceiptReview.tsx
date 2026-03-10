@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, AlertCircle, Calendar, Link as LinkIcon, Calculator, Percent, Info, Zap, X, Check } from 'lucide-react';
+import { ArrowLeft, AlertCircle, Calendar, Link as LinkIcon, Calculator, Percent, Info, Zap, X, Check, Trash2 } from 'lucide-react';
 import { Receipt, ReceiptStatus, QuickBooksAccount, PaymentAccount, TaxTreatment, CachedCategory, OrgMember } from '../types';
 import { fetchAccounts, fetchPaymentAccounts, publishReceipt, isQBOConnectionError } from '../services/qboService';
 import { categoryRulesApi, orgApi } from '../services/apiService';
@@ -9,6 +9,7 @@ interface ReceiptReviewProps {
   receipt: Receipt;
   onUpdate: (updated: Receipt) => void;
   onBack: () => void;
+  onDelete?: (id: string) => Promise<void>;
   onQboConnectionError?: () => void;
   cachedCategories?: CachedCategory[];
   onRuleCreated?: () => Promise<void>;
@@ -63,7 +64,7 @@ const formatDateForInput = (dateString: string | undefined): string => {
   }
 };
 
-const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack, onQboConnectionError, cachedCategories, onRuleCreated, canPublish = true, isInOrg = false }) => {
+const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack, onDelete, onQboConnectionError, cachedCategories, onRuleCreated, canPublish = true, isInOrg = false }) => {
   // Debug: Log the receipt prop to see what data we're receiving
   console.log('ReceiptReview received receipt:', receipt);
   console.log('Receipt total:', receipt.total, 'Receipt tax:', receipt.tax, 'Receipt tax_rate:', receipt.tax_rate);
@@ -109,6 +110,8 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
 
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -330,6 +333,18 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
      }));
   };
 
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDelete(receipt.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete receipt');
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
   const handleSave = () => {
     // Clean up data before sending to API - convert to camelCase for backend
     const updatedData = {
@@ -522,6 +537,53 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
             <StatusBadge status={formData.status || ReceiptStatus.UPLOADED} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {onDelete && !showDeleteConfirm && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                style={{
+                  ...buttonBaseStyle,
+                  color: 'var(--status-error-text)',
+                  backgroundColor: 'transparent',
+                  border: '1px solid var(--status-error-text)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <Trash2 size={14} />
+                Delete
+              </button>
+            )}
+            {showDeleteConfirm && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: 'var(--font-size-small)', color: 'var(--text-secondary)' }}>
+                  Delete this receipt?
+                </span>
+                <button
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  style={{
+                    ...buttonBaseStyle,
+                    color: 'white',
+                    backgroundColor: 'var(--status-error-text)',
+                    opacity: isDeleting ? 0.7 : 1,
+                  }}
+                >
+                  {isDeleting ? 'Deleting...' : 'Confirm'}
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  style={{
+                    ...buttonBaseStyle,
+                    color: 'var(--text-secondary)',
+                    backgroundColor: 'transparent',
+                    border: '1px solid var(--border-strong)',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
             {canPublish && (
               <button
                 onClick={handleSave}

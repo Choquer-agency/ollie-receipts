@@ -332,6 +332,18 @@ const SignedInApp: React.FC = () => {
     setView('list');
   };
 
+  const handleDeleteReceipt = async (id: string) => {
+    await receiptApi.delete(id);
+    setReceipts(prev => prev.filter(r => r.id !== id));
+    setSelectedReceipt(null);
+    setView('list');
+  };
+
+  const handleDeleteMultipleReceipts = async (ids: string[]) => {
+    await Promise.all(ids.map(id => receiptApi.delete(id)));
+    setReceipts(prev => prev.filter(r => !ids.includes(r.id)));
+  };
+
   const handleConnectQBO = async () => {
     try {
       const success = await connectToQuickBooks();
@@ -667,6 +679,7 @@ const SignedInApp: React.FC = () => {
                     <ReceiptList
                       receipts={getCurrentList()}
                       onSelect={handleSelectReceipt}
+                      onDeleteMultiple={handleDeleteMultipleReceipts}
                     />
                  </div>
                </>
@@ -678,6 +691,7 @@ const SignedInApp: React.FC = () => {
               receipt={selectedReceipt}
               onUpdate={handleUpdateReceipt}
               onBack={handleBackToList}
+              onDelete={handleDeleteReceipt}
               onQboConnectionError={handleQboConnectionError}
               cachedCategories={cachedCategories}
               onRuleCreated={refreshRules}

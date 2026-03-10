@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { logAuditEvent } from '../services/auditService.js';
 import { matchRule, incrementRuleApplied } from '../services/categoryRulesService.js';
 import { getLangfuse } from '../services/langfuseService.js';
+import { deleteFromR2 } from '../utils/r2Utils.js';
 
 
 // Encode the path portion of an R2 URL (encode each segment, preserving slashes)
@@ -67,7 +68,7 @@ interface DuplicateCheckResult {
   existingReceiptId?: string;
 }
 
-const checkForDuplicate = async (
+export const checkForDuplicate = async (
   userId: string,
   filename?: string,
   transactionDetails?: {
@@ -521,13 +522,13 @@ export const deleteReceipt = async (req: AuthenticatedRequest, res: Response) =>
       result = await sql`
         DELETE FROM receipts
         WHERE id = ${id} AND organization_id = ${req.organizationId}
-        RETURNING id, vendor_name, original_filename, total
+        RETURNING id, image_url, vendor_name, original_filename, total
       `;
     } else {
       result = await sql`
         DELETE FROM receipts
         WHERE id = ${id} AND user_id = ${req.userId}
-        RETURNING id, vendor_name, original_filename, total
+        RETURNING id, image_url, vendor_name, original_filename, total
       `;
     }
 
@@ -536,6 +537,15 @@ export const deleteReceipt = async (req: AuthenticatedRequest, res: Response) =>
     }
 
     const deleted = result[0];
+
+    // Clean up the file from R2 storage
+    if (deleted.image_url) {
+      try {
+        await deleteFromR2(deleted.image_url);
+      } catch (err) {
+        console.error('Failed to delete R2 object (non-fatal):', err);
+      }
+    }
 
     logAuditEvent({
       organizationId: req.organizationId,
