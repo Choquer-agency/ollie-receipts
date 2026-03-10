@@ -13,7 +13,7 @@ function getAI(): GoogleGenAI {
   return _ai;
 }
 
-const MODEL = 'gemini-3-flash-preview';
+const MODEL = 'gemini-2.5-flash';
 
 const PROMPT = `Analyze this receipt/document and extract:
 - Vendor Name (business name)
