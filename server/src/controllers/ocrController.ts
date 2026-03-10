@@ -264,7 +264,7 @@ export async function processSingleReceiptOcr(
       undefined, // filename already checked upfront
       {
         vendorName: parsedData.vendor_name,
-        transactionDate: parsedData.transaction_date,
+        transactionDate: parsedData.transaction_date || undefined,
         tax: parsedData.tax,
         total: parsedData.total,
       },
@@ -296,11 +296,16 @@ export async function processSingleReceiptOcr(
       }
     }
 
+    // Fallback: if OCR returned empty/invalid date, use today's date
+    const txnDate = parsedData.transaction_date && parsedData.transaction_date.trim() !== ''
+      ? parsedData.transaction_date
+      : new Date().toISOString().split('T')[0];
+
     // Update receipt with OCR data — reset retry count on success
     await sql`
       UPDATE receipts SET
         vendor_name = ${parsedData.vendor_name},
-        transaction_date = ${parsedData.transaction_date},
+        transaction_date = ${txnDate},
         total = ${parsedData.total},
         tax = ${parsedData.tax || 0},
         currency = ${parsedData.currency || 'CAD'},
