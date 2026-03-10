@@ -2,7 +2,16 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { getLangfuse } from './langfuseService.js';
 import { ParsedReceiptData } from '../types/receipt.js';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+// Lazy-initialize to avoid crashing at module load when env var is missing
+let _ai: GoogleGenAI | null = null;
+function getAI(): GoogleGenAI {
+  if (!_ai) {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) throw new Error('GEMINI_API_KEY environment variable is not set');
+    _ai = new GoogleGenAI({ apiKey: key });
+  }
+  return _ai;
+}
 
 const MODEL = 'gemini-3-flash-preview';
 
@@ -62,7 +71,7 @@ export async function parseReceipt(
       ? PROMPT.replace('receipt/document', 'document')
       : PROMPT;
 
-    const response = await ai.models.generateContent({
+    const response = await getAI().models.generateContent({
       model: MODEL,
       contents: {
         parts: [
