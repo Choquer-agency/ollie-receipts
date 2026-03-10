@@ -163,10 +163,11 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 5, baseDelay = 3000)
     } catch (error: any) {
       const message = error?.message || '';
       // Only skip retry for auth errors — everything else gets retried
-      if (message.includes('API key') || message.includes('PERMISSION_DENIED')) throw error;
+      const status = error?.status || error?.statusCode || 0;
+      if (status === 401 || status === 403 || message.includes('API key') || message.includes('authentication_error')) throw error;
       if (attempt === retries) throw error;
       const delay = baseDelay * Math.pow(2, attempt); // 3s, 6s, 12s, 24s, 48s
-      console.log(`Gemini OCR attempt ${attempt + 1}/${retries} failed: ${message.substring(0, 120)}. Retrying in ${delay}ms...`);
+      console.log(`OCR attempt ${attempt + 1}/${retries} failed: ${message.substring(0, 120)}. Retrying in ${delay}ms...`);
       await new Promise(r => setTimeout(r, delay));
     }
   }

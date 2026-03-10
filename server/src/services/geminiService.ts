@@ -1,46 +1,41 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import Anthropic from '@anthropic-ai/sdk';
 import { getLangfuse } from './langfuseService.js';
 import { ParsedReceiptData } from '../types/receipt.js';
 
 // Lazy-initialize to avoid crashing at module load when env var is missing
-let _ai: GoogleGenAI | null = null;
-function getAI(): GoogleGenAI {
-  if (!_ai) {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) throw new Error('GEMINI_API_KEY environment variable is not set');
-    _ai = new GoogleGenAI({ apiKey: key });
+let _client: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (!_client) {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) throw new Error('ANTHROPIC_API_KEY environment variable is not set');
+    _client = new Anthropic({ apiKey: key });
   }
-  return _ai;
+  return _client;
 }
 
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'claude-haiku-4-5-20251001';
 
-const PROMPT = `Analyze this receipt/document and extract:
-- Vendor Name (business name)
-- Transaction Date (REQUIRED - look for payment date, invoice date, or transaction date. Convert to YYYY-MM-DD format. Common formats include MM/DD/YYYY, DD/MM/YYYY, Month DD YYYY. If multiple dates exist, prefer the payment/transaction date over issue dates.)
-- Total Amount (the final amount paid)
-- Tax Amount (if visible, otherwise 0)
-- Currency Code (e.g., USD, CAD, EUR - default to CAD if unclear)
-- Suggested Expense Category (e.g., "Meals & Entertainment", "Office Supplies", "Travel", "Software Subscription")
-- Description (IMPORTANT - look for line items, products purchased, or itemized purchases. List them concisely, separated by commas. If no line items are visible, look for any notes, memo, or description fields on the receipt. If nothing is found, leave empty.)
+const PROMPT = `Analyze this receipt/document and extract the following fields. Return ONLY valid JSON with these exact keys:
 
-IMPORTANT: Transaction date is mandatory. Search carefully for any date on the receipt.
+{
+  "vendor_name": "business name",
+  "transaction_date": "YYYY-MM-DD",
+  "total": 0.00,
+  "tax": 0.00,
+  "currency": "CAD",
+  "suggested_category": "category",
+  "description": "line items"
+}
 
-Return the data in strict JSON format.`;
+Rules:
+- transaction_date: REQUIRED. Look for payment date, invoice date, or transaction date. Convert to YYYY-MM-DD. If multiple dates exist, prefer the payment/transaction date.
+- total: the final amount paid
+- tax: tax amount if visible, otherwise 0
+- currency: e.g. USD, CAD, EUR — default to CAD if unclear
+- suggested_category: e.g. "Meals & Entertainment", "Office Supplies", "Travel", "Software Subscription"
+- description: list line items/products concisely separated by commas. If none found, leave empty string.
 
-const RESPONSE_SCHEMA = {
-  type: Type.OBJECT,
-  properties: {
-    vendor_name: { type: Type.STRING },
-    transaction_date: { type: Type.STRING },
-    total: { type: Type.NUMBER },
-    tax: { type: Type.NUMBER },
-    currency: { type: Type.STRING },
-    suggested_category: { type: Type.STRING },
-    description: { type: Type.STRING },
-  },
-  required: ['vendor_name', 'transaction_date', 'total', 'suggested_category'],
-};
+Return ONLY the JSON object, no markdown, no explanation.`;
 
 export async function parseReceipt(
   imageBuffer: Buffer,
@@ -56,9 +51,8 @@ export async function parseReceipt(
   const base64Data = imageBuffer.toString('base64');
   const imageSizeBytes = imageBuffer.length;
 
-  // Create Langfuse generation (or just call Gemini if Langfuse not configured)
   const generation = langfuse?.generation({
-    name: 'gemini-ocr',
+    name: 'claude-ocr',
     model: MODEL,
     input: { prompt: PROMPT, imageMetadata: { mimeType, imageSizeBytes } },
     metadata: { mimeType, imageSizeBytes, receiptId: opts?.receiptId, userId: opts?.userId },
@@ -67,33 +61,62 @@ export async function parseReceipt(
 
   try {
     const isPdf = mimeType.includes('pdf');
+
+    // Map mime type to Claude's supported media types
+    let mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+    if (mimeType.includes('png')) mediaType = 'image/png';
+    else if (mimeType.includes('gif')) mediaType = 'image/gif';
+    else if (mimeType.includes('webp')) mediaType = 'image/webp';
+    else mediaType = 'image/jpeg';
+
     const promptText = isPdf
       ? PROMPT.replace('receipt/document', 'document')
       : PROMPT;
 
-    const response = await getAI().models.generateContent({
-      model: MODEL,
-      contents: {
-        parts: [
+    // Build content parts based on file type
+    const contentParts: Anthropic.ContentBlockParam[] = isPdf
+      ? [
           {
-            inlineData: {
-              mimeType,
+            type: 'document' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: 'application/pdf' as const,
               data: base64Data,
             },
           },
-          { text: promptText },
-        ],
-      },
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: RESPONSE_SCHEMA,
-      },
+          { type: 'text' as const, text: promptText },
+        ]
+      : [
+          {
+            type: 'image' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: mediaType,
+              data: base64Data,
+            },
+          },
+          { type: 'text' as const, text: promptText },
+        ];
+
+    const response = await getClient().messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      messages: [
+        {
+          role: 'user',
+          content: contentParts,
+        },
+      ],
     });
 
-    const text = response.text;
-    if (!text) throw new Error('No data returned from Gemini');
+    // Extract text from response
+    const textBlock = response.content.find(b => b.type === 'text');
+    const text = textBlock && textBlock.type === 'text' ? textBlock.text : null;
+    if (!text) throw new Error('No data returned from Claude');
 
-    const parsed = JSON.parse(text.trim()) as ParsedReceiptData;
+    // Parse JSON — handle potential markdown code blocks
+    const jsonStr = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    const parsed = JSON.parse(jsonStr) as ParsedReceiptData;
 
     // Apply fallback: if description is empty or just whitespace, use vendor name
     if (!parsed.description || parsed.description.trim() === '') {
@@ -101,16 +124,13 @@ export async function parseReceipt(
     }
 
     // Update Langfuse generation with output and usage
-    const usage = response.usageMetadata;
     generation?.end({
       output: parsed,
-      usage: usage
-        ? {
-            input: usage.promptTokenCount,
-            output: usage.candidatesTokenCount,
-            total: usage.totalTokenCount,
-          }
-        : undefined,
+      usage: {
+        input: response.usage.input_tokens,
+        output: response.usage.output_tokens,
+        total: response.usage.input_tokens + response.usage.output_tokens,
+      },
     });
 
     return parsed;
@@ -121,8 +141,8 @@ export async function parseReceipt(
       statusMessage: error instanceof Error ? error.message : 'OCR failed',
     });
     const status = (error as any)?.status || (error as any)?.statusCode || '';
-    const errorDetails = (error as any)?.errorDetails || (error as any)?.response?.data || '';
+    const errorDetails = (error as any)?.error || (error as any)?.response?.data || '';
     console.error(`OCR Error [${status}] (mime: ${mimeType}, size: ${imageSizeBytes}b):`, error instanceof Error ? error.message : error, errorDetails ? JSON.stringify(errorDetails) : '');
-    throw error; // Preserve original error for retry logic
+    throw error;
   }
 }
