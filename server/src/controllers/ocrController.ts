@@ -143,8 +143,8 @@ export const processBatchOcr = async (req: AuthenticatedRequest, res: Response) 
   ).catch(err => console.error('Background batch OCR error:', err));
 };
 
-// Retry wrapper - retries all transient errors (rate limits, network, 5xx)
-async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 2000): Promise<T> {
+// Aggressive retry - never give up on transient errors
+async function withRetry<T>(fn: () => Promise<T>, retries = 5, baseDelay = 3000): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
@@ -152,43 +152,35 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 2000)
       if (attempt === retries) throw error;
       const status = error?.status || error?.statusCode || error?.response?.status;
       const message = error?.message || '';
-      // Retry on: rate limits, server errors, network errors, resource exhausted
-      const isRetryable = status === 429 || status >= 500
-        || message.includes('429') || message.toLowerCase().includes('rate limit')
-        || message.toLowerCase().includes('resource exhausted')
-        || message.toLowerCase().includes('overloaded')
-        || message.toLowerCase().includes('ECONNRESET')
-        || message.toLowerCase().includes('timeout');
-      if (!isRetryable) throw error;
-      const delay = baseDelay * Math.pow(2, attempt);
-      console.log(`Gemini error (${status || message.substring(0, 80)}), retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
+      // Only skip retry for clear non-retryable errors (auth, bad request)
+      const isNonRetryable = status === 400 || status === 401 || status === 403
+        || message.includes('API key');
+      if (isNonRetryable) throw error;
+      // Everything else gets retried with exponential backoff
+      const delay = baseDelay * Math.pow(2, attempt); // 3s, 6s, 12s, 24s, 48s
+      console.log(`Gemini error for OCR (${status || 'no status'}: ${message.substring(0, 100)}), retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
       await new Promise(r => setTimeout(r, delay));
     }
   }
   throw new Error('Unreachable');
 }
 
+// Process receipts one at a time to avoid rate limits — reliability over speed
 async function processReceiptsInBackground(
   receipts: Array<{ id: string; imageUrl: string; originalFilename: string }>,
   sessionId: string,
   userId: string,
   organizationId?: string
 ) {
-  const CONCURRENCY = 3;
-  const executing = new Set<Promise<void>>();
-
   for (const receipt of receipts) {
-    const task = processSingleReceiptOcr(receipt, sessionId, userId, organizationId)
-      .catch(err => console.error(`OCR failed for receipt ${receipt.id}:`, err))
-      .finally(() => executing.delete(task));
-    executing.add(task);
-    if (executing.size >= CONCURRENCY) {
-      await Promise.race(executing);
+    try {
+      await processSingleReceiptOcr(receipt, sessionId, userId, organizationId);
+    } catch (err) {
+      console.error(`OCR failed for receipt ${receipt.id}:`, err);
     }
-    // Small stagger to avoid hitting Gemini rate limits
-    await new Promise(r => setTimeout(r, 500));
+    // 1 second gap between receipts to stay well within rate limits
+    await new Promise(r => setTimeout(r, 1000));
   }
-  await Promise.all(executing);
   console.log(`Batch OCR complete: ${receipts.length} receipts processed`);
 }
 
