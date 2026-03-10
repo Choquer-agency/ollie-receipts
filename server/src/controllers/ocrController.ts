@@ -143,22 +143,18 @@ export const processBatchOcr = async (req: AuthenticatedRequest, res: Response) 
   ).catch(err => console.error('Background batch OCR error:', err));
 };
 
-// Aggressive retry - never give up on transient errors
+// Retry everything — only give up on auth errors
 async function withRetry<T>(fn: () => Promise<T>, retries = 5, baseDelay = 3000): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
     } catch (error: any) {
-      if (attempt === retries) throw error;
-      const status = error?.status || error?.statusCode || error?.response?.status;
       const message = error?.message || '';
-      // Only skip retry for clear non-retryable errors (auth, bad request)
-      const isNonRetryable = status === 400 || status === 401 || status === 403
-        || message.includes('API key');
-      if (isNonRetryable) throw error;
-      // Everything else gets retried with exponential backoff
+      // Only skip retry for auth errors — everything else gets retried
+      if (message.includes('API key') || message.includes('PERMISSION_DENIED')) throw error;
+      if (attempt === retries) throw error;
       const delay = baseDelay * Math.pow(2, attempt); // 3s, 6s, 12s, 24s, 48s
-      console.log(`Gemini error for OCR (${status || 'no status'}: ${message.substring(0, 100)}), retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
+      console.log(`Gemini OCR attempt ${attempt + 1}/${retries} failed: ${message.substring(0, 120)}. Retrying in ${delay}ms...`);
       await new Promise(r => setTimeout(r, delay));
     }
   }
