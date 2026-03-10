@@ -296,10 +296,10 @@ export async function processSingleReceiptOcr(
       }
     }
 
-    // Fallback: if OCR returned empty/invalid date, use today's date
+    // Allow null date — OCR sometimes can't extract a date
     const txnDate = parsedData.transaction_date && parsedData.transaction_date.trim() !== ''
       ? parsedData.transaction_date
-      : new Date().toISOString().split('T')[0];
+      : null;
 
     // Update receipt with OCR data — reset retry count on success
     await sql`
