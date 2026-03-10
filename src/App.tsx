@@ -278,6 +278,39 @@ const SignedInApp: React.FC = () => {
     loadReceipts();
   }, [getToken, organization?.id]);
 
+  // Watch for any "uploaded" receipts and poll until they're processed
+  // This handles: page refresh, tab close/reopen, server restarts
+  const uploadedCount = receipts.filter(r => r.status === ReceiptStatus.UPLOADED).length;
+  const retriggeredRef = React.useRef(false);
+
+  useEffect(() => {
+    if (uploadedCount === 0) {
+      retriggeredRef.current = false;
+      return;
+    }
+
+    // Re-trigger OCR once for stuck "uploaded" receipts (server deduplicates)
+    if (!retriggeredRef.current) {
+      retriggeredRef.current = true;
+      const ids = receipts.filter(r => r.status === ReceiptStatus.UPLOADED).map(r => r.id);
+      receiptApi.triggerBatchOcr(ids, crypto.randomUUID()).catch(() => {});
+    }
+
+    // Poll every 5 seconds to pick up status changes
+    const poll = setInterval(async () => {
+      try {
+        const allReceipts = await receiptApi.getAll();
+        if (Array.isArray(allReceipts)) {
+          setReceipts(allReceipts);
+        }
+      } catch {
+        // Keep polling
+      }
+    }, 5000);
+
+    return () => clearInterval(poll);
+  }, [uploadedCount]);
+
   const handleUploadComplete = (receipt: Receipt) => {
     setReceipts(prev => {
       const exists = prev.some(r => r.id === receipt.id);

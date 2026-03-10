@@ -94,6 +94,9 @@ export const processOcr = async (req: AuthenticatedRequest, res: Response) => {
 
 // --- Batch OCR endpoint ---
 
+// Track receipts currently being processed to prevent duplicate work
+const processingIds = new Set<string>();
+
 export const processBatchOcr = async (req: AuthenticatedRequest, res: Response) => {
   const { receiptIds, sessionId } = req.body;
 
@@ -121,18 +124,27 @@ export const processBatchOcr = async (req: AuthenticatedRequest, res: Response) 
     `;
   }
 
-  const validReceipts = receipts.map((r: any) => ({
-    id: r.id,
-    imageUrl: r.image_url,
-    originalFilename: r.original_filename,
-  }));
+  // Filter out receipts already being processed
+  const validReceipts = receipts
+    .filter((r: any) => !processingIds.has(r.id))
+    .map((r: any) => ({
+      id: r.id,
+      imageUrl: r.image_url,
+      originalFilename: r.original_filename,
+    }));
 
   // Respond immediately
   res.status(202).json({
     accepted: validReceipts.length,
     total: receiptIds.length,
+    alreadyProcessing: receipts.length - validReceipts.length,
     message: 'OCR processing started',
   });
+
+  if (validReceipts.length === 0) return;
+
+  // Mark as processing
+  validReceipts.forEach((r: any) => processingIds.add(r.id));
 
   // Fire background processing (not awaited)
   processReceiptsInBackground(
@@ -173,6 +185,8 @@ async function processReceiptsInBackground(
       await processSingleReceiptOcr(receipt, sessionId, userId, organizationId);
     } catch (err) {
       console.error(`OCR failed for receipt ${receipt.id}:`, err);
+    } finally {
+      processingIds.delete(receipt.id);
     }
     // 1 second gap between receipts to stay well within rate limits
     await new Promise(r => setTimeout(r, 1000));
