@@ -121,7 +121,8 @@ export async function parseReceipt(
       statusMessage: error instanceof Error ? error.message : 'OCR failed',
     });
     const status = (error as any)?.status || (error as any)?.statusCode || '';
-    console.error(`OCR Error [${status}]:`, error instanceof Error ? error.message : error);
+    const errorDetails = (error as any)?.errorDetails || (error as any)?.response?.data || '';
+    console.error(`OCR Error [${status}] (mime: ${mimeType}, size: ${imageSizeBytes}b):`, error instanceof Error ? error.message : error, errorDetails ? JSON.stringify(errorDetails) : '');
     throw error; // Preserve original error for retry logic
   }
 }
