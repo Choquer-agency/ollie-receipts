@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
 import { Receipt, ReceiptStatus } from '../types';
 import StatusBadge from './StatusBadge';
-import { FileText, Square, CheckSquare, Trash2 } from 'lucide-react';
+import { FileText, Square, CheckSquare, Trash2, RefreshCw } from 'lucide-react';
 
 interface ReceiptListProps {
   receipts: Receipt[];
   onSelect: (receipt: Receipt) => void;
   onDeleteMultiple?: (ids: string[]) => Promise<void>;
+  onRetryOcr?: (receipt: Receipt) => Promise<void>;
 }
 
-const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect, onDeleteMultiple }) => {
+const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect, onDeleteMultiple, onRetryOcr }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set());
 
   // Sort: Needs Review (OCR_COMPLETE) first, then Reviewed, then date descending
   const sortedReceipts = [...receipts].sort((a, b) => {
@@ -305,8 +307,57 @@ const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect, onDeleteM
                   </div>
 
                   {/* Status */}
-                  <div style={{ width: '128px', flexShrink: 0 }}>
-                    <StatusBadge status={receipt.status} />
+                  <div style={{ width: '128px', flexShrink: 0, position: 'relative' }}>
+                    {receipt.status === ReceiptStatus.ERROR && onRetryOcr ? (
+                      <div
+                        className="error-status-cell"
+                        style={{ display: 'inline-flex', position: 'relative' }}
+                      >
+                        <div className="error-badge-default">
+                          <StatusBadge status={receipt.status} />
+                        </div>
+                        <button
+                          className="retry-ocr-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (retryingIds.has(receipt.id)) return;
+                            setRetryingIds(prev => new Set(prev).add(receipt.id));
+                            onRetryOcr(receipt).finally(() => {
+                              setRetryingIds(prev => {
+                                const next = new Set(prev);
+                                next.delete(receipt.id);
+                                return next;
+                              });
+                            });
+                          }}
+                          disabled={retryingIds.has(receipt.id)}
+                          style={{
+                            display: 'none',
+                            position: 'absolute',
+                            inset: 0,
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 12px',
+                            borderRadius: 'var(--radius-md)',
+                            fontSize: 'var(--font-size-small)',
+                            fontWeight: 'var(--font-weight-semibold)',
+                            border: '1px solid var(--primary)',
+                            backgroundColor: 'var(--background-elevated)',
+                            color: 'var(--primary)',
+                            cursor: retryingIds.has(receipt.id) ? 'not-allowed' : 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          <RefreshCw
+                            size={13}
+                            style={retryingIds.has(receipt.id) ? { animation: 'spin 1s linear infinite' } : {}}
+                          />
+                          {retryingIds.has(receipt.id) ? 'Retrying...' : 'Re-run'}
+                        </button>
+                      </div>
+                    ) : (
+                      <StatusBadge status={receipt.status} />
+                    )}
                   </div>
 
                   {/* Date */}
@@ -452,5 +503,16 @@ const ReceiptList: React.FC<ReceiptListProps> = ({ receipts, onSelect, onDeleteM
     </div>
   );
 };
+
+// Inject hover styles for retry button
+const styleTag = document.createElement('style');
+styleTag.textContent = `
+  .error-status-cell:hover .error-badge-default { visibility: hidden; }
+  .error-status-cell:hover .retry-ocr-btn { display: inline-flex !important; }
+`;
+if (!document.querySelector('[data-receipt-list-styles]')) {
+  styleTag.setAttribute('data-receipt-list-styles', '');
+  document.head.appendChild(styleTag);
+}
 
 export default ReceiptList;

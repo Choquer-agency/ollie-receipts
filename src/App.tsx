@@ -344,6 +344,31 @@ const SignedInApp: React.FC = () => {
     setReceipts(prev => prev.filter(r => !ids.includes(r.id)));
   };
 
+  const handleRetryOcr = async (receipt: Receipt) => {
+    try {
+      // Set status back to uploaded so it shows as processing
+      setReceipts(prev => prev.map(r => r.id === receipt.id ? { ...r, status: ReceiptStatus.UPLOADED } : r));
+      // Trigger batch OCR for this single receipt
+      await receiptApi.triggerBatchOcr([receipt.id], crypto.randomUUID());
+      // Poll for completion
+      const poll = setInterval(async () => {
+        try {
+          const updated = await receiptApi.getById(receipt.id);
+          if (updated.status !== ReceiptStatus.UPLOADED) {
+            clearInterval(poll);
+            setReceipts(prev => prev.map(r => r.id === receipt.id ? updated : r));
+          }
+        } catch {
+          // Keep polling
+        }
+      }, 3000);
+      // Safety timeout
+      setTimeout(() => clearInterval(poll), 5 * 60 * 1000);
+    } catch (error) {
+      console.error('Failed to retry OCR:', error);
+    }
+  };
+
   const handleConnectQBO = async () => {
     try {
       const success = await connectToQuickBooks();
@@ -680,6 +705,7 @@ const SignedInApp: React.FC = () => {
                       receipts={getCurrentList()}
                       onSelect={handleSelectReceipt}
                       onDeleteMultiple={handleDeleteMultipleReceipts}
+                      onRetryOcr={handleRetryOcr}
                     />
                  </div>
                </>
