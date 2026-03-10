@@ -162,45 +162,59 @@ function isPermanentError(error: any): boolean {
   );
 }
 
+function isRateLimitError(error: any): boolean {
+  const status = error?.status || error?.statusCode || 0;
+  const message = error?.message || '';
+  return status === 429 || message.includes('rate_limit_error');
+}
+
 // Retry with exponential backoff — skip retries for permanent errors
+// Rate limit errors get longer delays and more retries
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 2000): Promise<T> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  const maxRetries = retries;
+  let rateLimitRetries = 0;
+  const MAX_RATE_LIMIT_RETRIES = 5;
+
+  for (let attempt = 0; ; attempt++) {
     try {
       return await fn();
     } catch (error: any) {
       if (isPermanentError(error)) throw error;
-      if (attempt === retries) throw error;
+
+      if (isRateLimitError(error)) {
+        rateLimitRetries++;
+        if (rateLimitRetries > MAX_RATE_LIMIT_RETRIES) throw error;
+        // Wait 60s on rate limit (limit is per-minute), with jitter
+        const delay = 60000 + Math.random() * 5000;
+        console.log(`OCR rate limited (attempt ${rateLimitRetries}/${MAX_RATE_LIMIT_RETRIES}). Waiting ${Math.round(delay / 1000)}s...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+
+      if (attempt >= maxRetries) throw error;
       const delay = baseDelay * Math.pow(2, attempt); // 2s, 4s, 8s
-      console.log(`OCR attempt ${attempt + 1}/${retries} failed: ${(error?.message || '').substring(0, 120)}. Retrying in ${delay}ms...`);
+      console.log(`OCR attempt ${attempt + 1}/${maxRetries} failed: ${(error?.message || '').substring(0, 120)}. Retrying in ${delay}ms...`);
       await new Promise(r => setTimeout(r, delay));
     }
   }
-  throw new Error('Unreachable');
 }
 
-// Process receipts 3 at a time for throughput
+// Process receipts sequentially to stay within rate limits (50K input tokens/min)
 async function processReceiptsInBackground(
   receipts: Array<{ id: string; imageUrl: string; originalFilename: string }>,
   sessionId: string,
   userId: string,
   organizationId?: string
 ) {
-  const CONCURRENCY = 3;
-  for (let i = 0; i < receipts.length; i += CONCURRENCY) {
-    const batch = receipts.slice(i, i + CONCURRENCY);
-    const results = await Promise.allSettled(
-      batch.map(receipt =>
-        processSingleReceiptOcr(receipt, sessionId, userId, organizationId)
-      )
-    );
-    for (let j = 0; j < results.length; j++) {
-      if (results[j].status === 'rejected') {
-        console.error(`OCR failed for receipt ${batch[j].id}:`, (results[j] as PromiseRejectedResult).reason);
-      }
+  for (let i = 0; i < receipts.length; i++) {
+    try {
+      await processSingleReceiptOcr(receipts[i], sessionId, userId, organizationId);
+    } catch (err) {
+      console.error(`OCR failed for receipt ${receipts[i].id}:`, err);
     }
-    // 500ms gap between batches
-    if (i + CONCURRENCY < receipts.length) {
-      await new Promise(r => setTimeout(r, 500));
+    // 2s gap between receipts to avoid bursting the rate limit
+    if (i + 1 < receipts.length) {
+      await new Promise(r => setTimeout(r, 2000));
     }
   }
   console.log(`Batch OCR complete: ${receipts.length} receipts processed`);

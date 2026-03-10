@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { sql } from '../db/index.js';
 import { processSingleReceiptOcr } from '../controllers/ocrController.js';
 
-const SWEEPER_CONCURRENCY = 3;
+const SWEEPER_CONCURRENCY = 1;
 const MAX_STUCK_MINUTES = 5;
 const MAX_RETRY_COUNT = 10;
 const MAX_RECEIPTS_PER_RUN = 10;
@@ -60,7 +60,7 @@ async function sweep() {
         )
       );
       if (i + SWEEPER_CONCURRENCY < claimed.length) {
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 2000));
       }
     }
 
