@@ -11,6 +11,7 @@ import categoryRulesRoutes from './routes/categoryRules.js';
 import orgRoutes from './routes/org.js';
 import { validateQBConfig } from './config/quickbooks.js';
 import { startQuickBooksTokenRefreshJob } from './jobs/qboTokenRefresh.js';
+import { startOcrSweeperJob } from './jobs/ocrSweeper.js';
 import { isLangfuseConfigured } from './services/langfuseService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -81,6 +82,9 @@ app.listen(PORT, () => {
   } else {
     console.log('⚠ Langfuse not configured (LANGFUSE_SECRET_KEY / LANGFUSE_PUBLIC_KEY missing)');
   }
+
+  // Start OCR sweeper for automatic retry of failed/stuck receipts
+  startOcrSweeperJob();
 
   // Validate QuickBooks configuration
   const qbConfig = validateQBConfig();

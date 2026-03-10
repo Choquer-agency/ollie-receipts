@@ -219,3 +219,7 @@ UPDATE quickbooks_connections
 SET refresh_token_expires_at = refresh_token_created_at + INTERVAL '100 days'
 WHERE refresh_token_expires_at IS NULL;
 
+-- OCR retry tracking columns
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS ocr_retry_count INTEGER DEFAULT 0;
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS ocr_last_error TEXT;
+

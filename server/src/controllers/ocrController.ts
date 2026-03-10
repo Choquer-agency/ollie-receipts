@@ -94,9 +94,6 @@ export const processOcr = async (req: AuthenticatedRequest, res: Response) => {
 
 // --- Batch OCR endpoint ---
 
-// Track receipts currently being processed to prevent duplicate work
-const processingIds = new Set<string>();
-
 export const processBatchOcr = async (req: AuthenticatedRequest, res: Response) => {
   const { receiptIds, sessionId } = req.body;
 
@@ -104,47 +101,45 @@ export const processBatchOcr = async (req: AuthenticatedRequest, res: Response) 
     return res.status(400).json({ error: 'receiptIds must be an array of 1-500 IDs' });
   }
 
-  // Verify all receipts belong to this user/org and are in 'uploaded' status
-  let receipts;
+  // Atomically claim receipts by setting status to 'processing'
+  // This replaces the in-memory processingIds Set and survives server restarts
+  let claimed;
   if (req.organizationId) {
-    receipts = await sql`
-      SELECT id, image_url, original_filename
-      FROM receipts
+    claimed = await sql`
+      UPDATE receipts
+      SET status = 'processing', updated_at = NOW()
       WHERE id = ANY(${receiptIds})
         AND organization_id = ${req.organizationId}
-        AND status = 'uploaded'
+        AND status IN ('uploaded', 'error')
+        AND COALESCE(ocr_retry_count, 0) < 10
+      RETURNING id, image_url, original_filename
     `;
   } else {
-    receipts = await sql`
-      SELECT id, image_url, original_filename
-      FROM receipts
+    claimed = await sql`
+      UPDATE receipts
+      SET status = 'processing', updated_at = NOW()
       WHERE id = ANY(${receiptIds})
         AND user_id = ${req.userId}
-        AND status = 'uploaded'
+        AND status IN ('uploaded', 'error')
+        AND COALESCE(ocr_retry_count, 0) < 10
+      RETURNING id, image_url, original_filename
     `;
   }
 
-  // Filter out receipts already being processed
-  const validReceipts = receipts
-    .filter((r: any) => !processingIds.has(r.id))
-    .map((r: any) => ({
-      id: r.id,
-      imageUrl: r.image_url,
-      originalFilename: r.original_filename,
-    }));
+  const validReceipts = claimed.map((r: any) => ({
+    id: r.id,
+    imageUrl: r.image_url,
+    originalFilename: r.original_filename,
+  }));
 
   // Respond immediately
   res.status(202).json({
     accepted: validReceipts.length,
     total: receiptIds.length,
-    alreadyProcessing: receipts.length - validReceipts.length,
     message: 'OCR processing started',
   });
 
   if (validReceipts.length === 0) return;
-
-  // Mark as processing
-  validReceipts.forEach((r: any) => processingIds.add(r.id));
 
   // Fire background processing (not awaited)
   processReceiptsInBackground(
@@ -155,47 +150,63 @@ export const processBatchOcr = async (req: AuthenticatedRequest, res: Response) 
   ).catch(err => console.error('Background batch OCR error:', err));
 };
 
-// Retry everything — only give up on auth errors
-async function withRetry<T>(fn: () => Promise<T>, retries = 5, baseDelay = 3000): Promise<T> {
+// Classify errors as permanent vs transient
+function isPermanentError(error: any): boolean {
+  const message = error?.message || '';
+  const status = error?.status || error?.statusCode || 0;
+  return (
+    status === 401 ||
+    status === 403 ||
+    message.includes('API key') ||
+    message.includes('authentication_error')
+  );
+}
+
+// Retry with exponential backoff — skip retries for permanent errors
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 2000): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
     } catch (error: any) {
-      const message = error?.message || '';
-      // Only skip retry for auth errors — everything else gets retried
-      const status = error?.status || error?.statusCode || 0;
-      if (status === 401 || status === 403 || message.includes('API key') || message.includes('authentication_error')) throw error;
+      if (isPermanentError(error)) throw error;
       if (attempt === retries) throw error;
-      const delay = baseDelay * Math.pow(2, attempt); // 3s, 6s, 12s, 24s, 48s
-      console.log(`OCR attempt ${attempt + 1}/${retries} failed: ${message.substring(0, 120)}. Retrying in ${delay}ms...`);
+      const delay = baseDelay * Math.pow(2, attempt); // 2s, 4s, 8s
+      console.log(`OCR attempt ${attempt + 1}/${retries} failed: ${(error?.message || '').substring(0, 120)}. Retrying in ${delay}ms...`);
       await new Promise(r => setTimeout(r, delay));
     }
   }
   throw new Error('Unreachable');
 }
 
-// Process receipts one at a time to avoid rate limits — reliability over speed
+// Process receipts 3 at a time for throughput
 async function processReceiptsInBackground(
   receipts: Array<{ id: string; imageUrl: string; originalFilename: string }>,
   sessionId: string,
   userId: string,
   organizationId?: string
 ) {
-  for (const receipt of receipts) {
-    try {
-      await processSingleReceiptOcr(receipt, sessionId, userId, organizationId);
-    } catch (err) {
-      console.error(`OCR failed for receipt ${receipt.id}:`, err);
-    } finally {
-      processingIds.delete(receipt.id);
+  const CONCURRENCY = 3;
+  for (let i = 0; i < receipts.length; i += CONCURRENCY) {
+    const batch = receipts.slice(i, i + CONCURRENCY);
+    const results = await Promise.allSettled(
+      batch.map(receipt =>
+        processSingleReceiptOcr(receipt, sessionId, userId, organizationId)
+      )
+    );
+    for (let j = 0; j < results.length; j++) {
+      if (results[j].status === 'rejected') {
+        console.error(`OCR failed for receipt ${batch[j].id}:`, (results[j] as PromiseRejectedResult).reason);
+      }
     }
-    // 1 second gap between receipts to stay well within rate limits
-    await new Promise(r => setTimeout(r, 1000));
+    // 500ms gap between batches
+    if (i + CONCURRENCY < receipts.length) {
+      await new Promise(r => setTimeout(r, 500));
+    }
   }
   console.log(`Batch OCR complete: ${receipts.length} receipts processed`);
 }
 
-async function processSingleReceiptOcr(
+export async function processSingleReceiptOcr(
   receipt: { id: string; imageUrl: string; originalFilename: string },
   sessionId: string,
   userId: string,
@@ -211,7 +222,7 @@ async function processSingleReceiptOcr(
   });
 
   try {
-    // Download image from R2
+    // Download image from R2 (r2Utils already has its own retry)
     const downloadSpan = trace?.span({
       name: 'r2-download',
       metadata: { imageUrl: receipt.imageUrl },
@@ -223,7 +234,7 @@ async function processSingleReceiptOcr(
       metadata: { sizeBytes: buffer.length, contentType },
     });
 
-    // Gemini OCR with retry for rate limits
+    // Claude OCR with retry for rate limits / transient errors
     const parsedData = await withRetry(() =>
       parseReceipt(buffer, contentType, {
         receiptId: receipt.id,
@@ -271,7 +282,7 @@ async function processSingleReceiptOcr(
       }
     }
 
-    // Update receipt with OCR data
+    // Update receipt with OCR data — reset retry count on success
     await sql`
       UPDATE receipts SET
         vendor_name = ${parsedData.vendor_name},
@@ -282,6 +293,8 @@ async function processSingleReceiptOcr(
         suggested_category = ${parsedData.suggested_category},
         description = ${parsedData.description || parsedData.vendor_name},
         status = 'ocr_complete',
+        ocr_retry_count = 0,
+        ocr_last_error = NULL,
         qb_account_id = COALESCE(${autoQbAccountId}, qb_account_id),
         auto_categorized = ${autoRuleId ? true : false},
         auto_categorized_rule_id = ${autoRuleId},
@@ -291,18 +304,29 @@ async function processSingleReceiptOcr(
 
     trace?.update({ output: { parsedData, autoCategorized: !!autoRuleId } });
   } catch (error: any) {
+    const errorMsg = error?.message || 'Unknown error';
     const errorDetail = error?.status || error?.statusCode || error?.response?.status || '';
-    console.error(`OCR error for receipt ${receipt.id} [${errorDetail}]:`, error?.message || error);
+    console.error(`OCR error for receipt ${receipt.id} [${errorDetail}]:`, errorMsg);
 
-    // Mark receipt as error
+    // Permanent errors get retry_count=999 to prevent sweeper retries
+    const retryCount = isPermanentError(error) ? 999 : undefined;
+
+    // Mark receipt as error with retry tracking
     await sql`
-      UPDATE receipts SET status = 'error', updated_at = NOW()
+      UPDATE receipts SET
+        status = 'error',
+        ocr_retry_count = CASE
+          WHEN ${retryCount !== undefined ? retryCount : null}::int IS NOT NULL THEN ${retryCount || 0}
+          ELSE COALESCE(ocr_retry_count, 0) + 1
+        END,
+        ocr_last_error = ${errorMsg.substring(0, 500)},
+        updated_at = NOW()
       WHERE id = ${receipt.id}
     `.catch(err => console.error(`Failed to update error status for ${receipt.id}:`, err));
 
     trace?.update({
-      output: { error: error instanceof Error ? error.message : 'Unknown error' },
-      metadata: { error: true },
+      output: { error: errorMsg },
+      metadata: { error: true, permanent: isPermanentError(error) },
     });
   }
 }

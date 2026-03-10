@@ -3,6 +3,23 @@ import fetch from 'node-fetch';
 import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_URL } from '../config/r2.js';
 
 /**
+ * Retry an async function with exponential backoff
+ */
+async function retryAsync<T>(fn: () => Promise<T>, retries = 3, baseDelay = 1000): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === retries) throw error;
+      const delay = baseDelay * Math.pow(2, attempt); // 1s, 2s, 4s
+      console.log(`R2 download attempt ${attempt + 1}/${retries} failed. Retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw new Error('Unreachable');
+}
+
+/**
  * Download image from R2 (or external URL fallback) and return as Buffer with content type
  */
 export async function downloadFromR2(imageUrl: string): Promise<{
@@ -21,35 +38,40 @@ export async function downloadFromR2(imageUrl: string): Promise<{
       : imageUrl.substring(receiptsIdx + 1); // strip leading '/' -> "receipts/..."
     const key = decodeURIComponent(rawKey);
     const command = new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key });
-    const r2Response = await r2Client.send(command);
 
-    if (!r2Response.Body) {
-      throw new Error('Image not found in R2 storage');
+    return retryAsync(async () => {
+      const r2Response = await r2Client.send(command);
+
+      if (!r2Response.Body) {
+        throw new Error('Image not found in R2 storage');
+      }
+
+      const bytes = await r2Response.Body.transformToByteArray();
+      const buffer = Buffer.from(bytes);
+      const contentType = r2Response.ContentType || 'image/jpeg';
+      const fileName = decodeURIComponent(key.split('/').pop() || 'receipt.jpg');
+
+      return { buffer, contentType, fileName };
+    });
+  }
+
+  // Fallback: fetch from external URL (with retry)
+  return retryAsync(async () => {
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
     }
 
-    const bytes = await r2Response.Body.transformToByteArray();
-    const buffer = Buffer.from(bytes);
-    const contentType = r2Response.ContentType || 'image/jpeg';
-    const fileName = decodeURIComponent(key.split('/').pop() || 'receipt.jpg');
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+
+    // Extract filename from URL
+    const urlPath = new URL(imageUrl).pathname;
+    const fileName = decodeURIComponent(urlPath.split('/').pop() || 'receipt.jpg');
 
     return { buffer, contentType, fileName };
-  }
-
-  // Fallback: fetch from external URL
-  const response = await fetch(imageUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const contentType = response.headers.get('content-type') || 'image/jpeg';
-
-  // Extract filename from URL
-  const urlPath = new URL(imageUrl).pathname;
-  const fileName = decodeURIComponent(urlPath.split('/').pop() || 'receipt.jpg');
-
-  return { buffer, contentType, fileName };
+  });
 }
 
 /**

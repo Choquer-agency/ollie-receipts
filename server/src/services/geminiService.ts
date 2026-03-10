@@ -107,7 +107,7 @@ export async function parseReceipt(
           content: contentParts,
         },
       ],
-    });
+    }, { timeout: 30000 });
 
     // Extract text from response
     const textBlock = response.content.find(b => b.type === 'text');
