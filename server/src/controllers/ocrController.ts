@@ -143,8 +143,8 @@ export const processBatchOcr = async (req: AuthenticatedRequest, res: Response) 
   ).catch(err => console.error('Background batch OCR error:', err));
 };
 
-// Retry wrapper for Gemini 429 rate limits
-async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 1000): Promise<T> {
+// Retry wrapper - retries all transient errors (rate limits, network, 5xx)
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 2000): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
@@ -152,13 +152,17 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 1000)
       if (attempt === retries) throw error;
       const status = error?.status || error?.statusCode || error?.response?.status;
       const message = error?.message || '';
-      if (status === 429 || message.includes('429') || message.toLowerCase().includes('rate limit')) {
-        const delay = baseDelay * Math.pow(2, attempt);
-        console.log(`Gemini rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
-        await new Promise(r => setTimeout(r, delay));
-      } else {
-        throw error; // non-retryable
-      }
+      // Retry on: rate limits, server errors, network errors, resource exhausted
+      const isRetryable = status === 429 || status >= 500
+        || message.includes('429') || message.toLowerCase().includes('rate limit')
+        || message.toLowerCase().includes('resource exhausted')
+        || message.toLowerCase().includes('overloaded')
+        || message.toLowerCase().includes('ECONNRESET')
+        || message.toLowerCase().includes('timeout');
+      if (!isRetryable) throw error;
+      const delay = baseDelay * Math.pow(2, attempt);
+      console.log(`Gemini error (${status || message.substring(0, 80)}), retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
+      await new Promise(r => setTimeout(r, delay));
     }
   }
   throw new Error('Unreachable');
@@ -170,7 +174,7 @@ async function processReceiptsInBackground(
   userId: string,
   organizationId?: string
 ) {
-  const CONCURRENCY = 5;
+  const CONCURRENCY = 3;
   const executing = new Set<Promise<void>>();
 
   for (const receipt of receipts) {
@@ -181,6 +185,8 @@ async function processReceiptsInBackground(
     if (executing.size >= CONCURRENCY) {
       await Promise.race(executing);
     }
+    // Small stagger to avoid hitting Gemini rate limits
+    await new Promise(r => setTimeout(r, 500));
   }
   await Promise.all(executing);
   console.log(`Batch OCR complete: ${receipts.length} receipts processed`);
@@ -281,8 +287,9 @@ async function processSingleReceiptOcr(
     `;
 
     trace?.update({ output: { parsedData, autoCategorized: !!autoRuleId } });
-  } catch (error) {
-    console.error(`OCR error for receipt ${receipt.id}:`, error);
+  } catch (error: any) {
+    const errorDetail = error?.status || error?.statusCode || error?.response?.status || '';
+    console.error(`OCR error for receipt ${receipt.id} [${errorDetail}]:`, error?.message || error);
 
     // Mark receipt as error
     await sql`

@@ -120,7 +120,8 @@ export async function parseReceipt(
       level: 'ERROR',
       statusMessage: error instanceof Error ? error.message : 'OCR failed',
     });
-    console.error('OCR Error:', error);
-    throw new Error('Failed to process document.');
+    const status = (error as any)?.status || (error as any)?.statusCode || '';
+    console.error(`OCR Error [${status}]:`, error instanceof Error ? error.message : error);
+    throw error; // Preserve original error for retry logic
   }
 }
