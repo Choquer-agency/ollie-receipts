@@ -81,12 +81,28 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     const total = safeParseNumber(receipt.total);
     const tax = safeParseNumber(receipt.tax);
     const subtotal = safeParseNumber(receipt.subtotal);
-    
+
+    // Detect foreign currency: either already flagged, or OCR set currency to non-CAD
+    const isForeign = receipt.foreign_currency
+      ? receipt.foreign_currency !== 'CAD'
+      : (receipt.currency != null && receipt.currency !== 'CAD');
+    const foreignCurrency = isForeign
+      ? (receipt.foreign_currency || receipt.currency!)
+      : undefined;
+    // If foreign but foreign_amount not set yet, move total into foreign_amount
+    const foreignAmount = isForeign
+      ? (safeParseNumber(receipt.foreign_amount) || total)
+      : undefined;
+    // If foreign and total still holds the foreign value (no CAD entered yet), clear it
+    const effectiveTotal = isForeign && !receipt.foreign_currency
+      ? undefined  // force CAD entry — total was the USD value
+      : total;
+
     return {
       // Start with receipt data
       ...receipt,
       // Ensure numeric fields are actually numbers
-      total,
+      total: effectiveTotal,
       tax,
       subtotal,
       // Override/set defaults only for fields that are null/undefined
@@ -99,8 +115,8 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
       // Override transaction_date with properly formatted version for HTML date input
       transaction_date: formatDateForInput(receipt.transaction_date),
       // Foreign currency fields
-      foreign_amount: safeParseNumber(receipt.foreign_amount),
-      foreign_currency: receipt.foreign_currency,
+      foreign_amount: foreignAmount,
+      foreign_currency: foreignCurrency,
     };
   });
   
