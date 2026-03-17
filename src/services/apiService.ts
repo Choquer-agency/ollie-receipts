@@ -178,6 +178,44 @@ export const categoryRulesApi = {
   },
 };
 
+// Currency rules endpoints
+export const currencyRulesApi = {
+  getAll: async () => {
+    try {
+      const response = await api.get('/api/currency-rules');
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error) {
+      console.error('currencyRulesApi.getAll error:', error);
+      return [];
+    }
+  },
+
+  create: async (data: { vendorPattern: string; currency?: string; matchType?: string; receiptId?: string }) => {
+    const response = await api.post('/api/currency-rules', data);
+    return response.data;
+  },
+
+  update: async (id: string, data: { currency?: string; matchType?: string; isActive?: boolean; vendorPattern?: string }) => {
+    const response = await api.patch(`/api/currency-rules/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: string) => {
+    const response = await api.delete(`/api/currency-rules/${id}`);
+    return response.data;
+  },
+
+  match: async (vendorName: string) => {
+    try {
+      const response = await api.post('/api/currency-rules/match', { vendorName });
+      return response.data.match || null;
+    } catch (error) {
+      console.error('currencyRulesApi.match error:', error);
+      return null;
+    }
+  },
+};
+
 // Organization endpoints
 export const orgApi = {
   getInfo: async () => {

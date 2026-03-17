@@ -45,6 +45,11 @@ export interface Receipt {
   auto_categorized?: boolean;
   auto_categorized_rule_id?: string;
 
+  // Foreign currency
+  foreign_amount?: number;
+  foreign_currency?: string;
+  auto_currency_rule_id?: string;
+
   // Team/Org fields
   organization_id?: string;
   uploaded_by?: string;
@@ -109,6 +114,23 @@ export interface RuleMatch {
   qbCategoryId: string;
   categoryName: string;
   qbAccountId: string;
+  matchType: 'exact' | 'contains';
+}
+
+export interface CurrencyRule {
+  id: string;
+  vendorPattern: string;
+  currency: string;
+  matchType: 'exact' | 'contains';
+  isActive: boolean;
+  timesApplied: number;
+  createdAt: string;
+}
+
+export interface CurrencyRuleMatch {
+  ruleId: string;
+  vendorPattern: string;
+  currency: string;
   matchType: 'exact' | 'contains';
 }
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth, useOrganization } from '@clerk/clerk-react';
-import { Receipt, ReceiptStatus, CachedCategory, CategoryRule, OrgRole } from './types';
+import { Receipt, ReceiptStatus, CachedCategory, CategoryRule, CurrencyRule, OrgRole } from './types';
 import { connectToQuickBooks, checkQBOStatus } from './services/qboService';
 import ReceiptList from './components/ReceiptList';
 import ReceiptUpload from './components/ReceiptUpload';
@@ -11,7 +11,7 @@ import AuditLog from './components/AuditLog';
 import AuthModal from './components/AuthModal';
 import UserMenu from './components/UserMenu';
 import { CheckCircle2 } from 'lucide-react';
-import { receiptApi, categoryApi, categoryRulesApi, setAuthToken, setTokenRefreshCallback } from './services/apiService';
+import { receiptApi, categoryApi, categoryRulesApi, currencyRulesApi, setAuthToken, setTokenRefreshCallback } from './services/apiService';
 
 type ViewState = 'list' | 'review';
 type TabState = 'new' | 'processing' | 'posted' | 'account' | 'team' | 'audit';
@@ -219,6 +219,7 @@ const SignedInApp: React.FC = () => {
   const [cachedCategories, setCachedCategories] = useState<CachedCategory[]>([]);
   const [isSyncingCategories, setIsSyncingCategories] = useState(false);
   const [categoryRules, setCategoryRules] = useState<CategoryRule[]>([]);
+  const [currencyRules, setCurrencyRules] = useState<CurrencyRule[]>([]);
 
   // Derive org context and permissions
   const isInOrg = !!organization;
@@ -230,7 +231,7 @@ const SignedInApp: React.FC = () => {
   const canPublish = !isInOrg || isAdmin || isAccountant || isBookkeeper;
   const canManageTeam = isInOrg && (isAdmin || isAccountant);
   const canViewAudit = isInOrg && (isAdmin || isAccountant);
-  const canConnectQBO = !isInOrg || isAdmin || isAccountant;
+  const canConnectQBO = !isInOrg || isAdmin || isAccountant || isBookkeeper;
 
   // Load data on mount and when org context changes
   useEffect(() => {
@@ -252,10 +253,11 @@ const SignedInApp: React.FC = () => {
           setIsQboConnected(qboStatus.connected);
 
           // Always load cached categories + rules (works without QB)
-          Promise.all([categoryApi.getAll(), categoryRulesApi.getAll()])
-            .then(([cats, rules]) => {
+          Promise.all([categoryApi.getAll(), categoryRulesApi.getAll(), currencyRulesApi.getAll()])
+            .then(([cats, rules, cRules]) => {
               setCachedCategories(cats);
               setCategoryRules(rules);
+              setCurrencyRules(cRules);
             })
             .catch(err => console.error('Category load failed (non-fatal):', err));
 
@@ -440,6 +442,15 @@ const SignedInApp: React.FC = () => {
       setCategoryRules(rules);
     } catch (error) {
       console.error('Failed to refresh rules:', error);
+    }
+  };
+
+  const refreshCurrencyRules = async () => {
+    try {
+      const rules = await currencyRulesApi.getAll();
+      setCurrencyRules(rules);
+    } catch (error) {
+      console.error('Failed to refresh currency rules:', error);
     }
   };
 
@@ -719,9 +730,11 @@ const SignedInApp: React.FC = () => {
                 <AccountPage
                   categories={cachedCategories}
                   rules={categoryRules}
+                  currencyRules={currencyRules}
                   isQboConnected={isQboConnected}
                   onSyncCategories={handleSyncCategories}
                   onRulesChanged={refreshRules}
+                  onCurrencyRulesChanged={refreshCurrencyRules}
                   isSyncing={isSyncingCategories}
                 />
              ) : activeTab === 'team' && canManageTeam ? (

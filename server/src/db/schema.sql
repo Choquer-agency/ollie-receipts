@@ -223,3 +223,36 @@ WHERE refresh_token_expires_at IS NULL;
 ALTER TABLE receipts ADD COLUMN IF NOT EXISTS ocr_retry_count INTEGER DEFAULT 0;
 ALTER TABLE receipts ADD COLUMN IF NOT EXISTS ocr_last_error TEXT;
 
+-- ============================================
+-- Vendor Currency Rules (foreign currency detection)
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS currency_rules (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  vendor_pattern TEXT NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  match_type TEXT NOT NULL DEFAULT 'exact', -- 'exact' or 'contains'
+  created_from_receipt_id UUID REFERENCES receipts(id) ON DELETE SET NULL,
+  is_active BOOLEAN DEFAULT true,
+  times_applied INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE(user_id, vendor_pattern)
+);
+
+CREATE INDEX IF NOT EXISTS idx_currency_rules_user_id ON currency_rules(user_id);
+CREATE INDEX IF NOT EXISTS idx_currency_rules_active ON currency_rules(user_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_currency_rules_vendor ON currency_rules(user_id, vendor_pattern);
+
+CREATE TRIGGER update_currency_rules_updated_at
+  BEFORE UPDATE ON currency_rules
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Foreign currency tracking on receipts
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS foreign_amount DECIMAL(10, 2);
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS foreign_currency TEXT;
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS auto_currency_rule_id UUID REFERENCES currency_rules(id) ON DELETE SET NULL;
+

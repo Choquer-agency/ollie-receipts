@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, AlertCircle, Calendar, Link as LinkIcon, Calculator, Percent, Info, Zap, X, Check, Trash2 } from 'lucide-react';
 import { Receipt, ReceiptStatus, QuickBooksAccount, PaymentAccount, TaxTreatment, CachedCategory, OrgMember } from '../types';
 import { fetchAccounts, fetchPaymentAccounts, publishReceipt, isQBOConnectionError } from '../services/qboService';
-import { categoryRulesApi, orgApi } from '../services/apiService';
+import { categoryRulesApi, currencyRulesApi, orgApi } from '../services/apiService';
 import StatusBadge from './StatusBadge';
 
 interface ReceiptReviewProps {
@@ -97,7 +97,10 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
       tax_treatment: receipt.tax_treatment || 'Inclusive',
       tax_rate: (tax && tax > 0) ? -1 : 0,
       // Override transaction_date with properly formatted version for HTML date input
-      transaction_date: formatDateForInput(receipt.transaction_date)
+      transaction_date: formatDateForInput(receipt.transaction_date),
+      // Foreign currency fields
+      foreign_amount: safeParseNumber(receipt.foreign_amount),
+      foreign_currency: receipt.foreign_currency,
     };
   });
   
@@ -124,6 +127,14 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
     existingRuleId?: string;
   } | null>(null);
   const [isCreatingRule, setIsCreatingRule] = useState(false);
+  const [currencyRulePrompt, setCurrencyRulePrompt] = useState<{
+    vendorName: string;
+    currency: string;
+    receiptId: string;
+    mode: 'create' | 'update';
+    existingRuleId?: string;
+  } | null>(null);
+  const [isCreatingCurrencyRule, setIsCreatingCurrencyRule] = useState(false);
 
   // Reset image loading state when receipt changes
   useEffect(() => {
@@ -369,6 +380,8 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
       isPaid: formData.is_paid,
       paymentAccountId: formData.payment_account_id,
       qbAccountId: formData.qb_account_id,
+      foreignAmount: formData.foreign_amount !== undefined ? parseFloat(String(formData.foreign_amount)) : undefined,
+      foreignCurrency: formData.foreign_currency || undefined,
     };
     
     // Create a receipt object with both camelCase (for display) and the original receipt data
@@ -387,11 +400,16 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
   };
 
   const handlePublish = async () => {
+    if (formData.foreign_currency && formData.foreign_currency !== 'CAD' && !formData.total) {
+      setError("Please enter the CAD bank amount for this foreign currency receipt.");
+      return;
+    }
+
     if (!formData.qb_account_id) {
       setError("Please select a Category (Expense Account).");
       return;
     }
-    
+
     if (!formData.payment_account_id) {
       setError("Please select a Payment Method.");
       return;
@@ -459,6 +477,83 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
 
   const handleDismissRulePrompt = () => {
     setRulePrompt(null);
+  };
+
+  const handleCurrencyChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newCurrency = e.target.value;
+    setCurrencyRulePrompt(null);
+
+    if (newCurrency === 'CAD') {
+      // Switching back to CAD: restore total from foreign_amount, clear foreign fields
+      setFormData(prev => ({
+        ...prev,
+        currency: 'CAD',
+        total: prev.foreign_amount || prev.total,
+        foreign_amount: undefined,
+        foreign_currency: undefined,
+      }));
+      return;
+    }
+
+    // Switching to foreign currency: move total to foreign_amount, clear total for CAD entry
+    setFormData(prev => ({
+      ...prev,
+      currency: newCurrency,
+      foreign_currency: newCurrency,
+      foreign_amount: prev.total,
+      total: undefined,
+    }));
+
+    // Check for existing currency rule and prompt if needed
+    const vendorName = formData.vendor_name?.trim();
+    if (!vendorName) return;
+
+    try {
+      const existingMatch = await currencyRulesApi.match(vendorName);
+      if (!existingMatch) {
+        setCurrencyRulePrompt({
+          vendorName,
+          currency: newCurrency,
+          receiptId: receipt.id,
+          mode: 'create',
+        });
+      } else if (existingMatch.currency !== newCurrency) {
+        setCurrencyRulePrompt({
+          vendorName,
+          currency: newCurrency,
+          receiptId: receipt.id,
+          mode: 'update',
+          existingRuleId: existingMatch.ruleId,
+        });
+      }
+    } catch {
+      // Non-fatal
+    }
+  };
+
+  const handleCreateCurrencyRule = async () => {
+    if (!currencyRulePrompt) return;
+    setIsCreatingCurrencyRule(true);
+    try {
+      if (currencyRulePrompt.mode === 'update' && currencyRulePrompt.existingRuleId) {
+        await currencyRulesApi.update(currencyRulePrompt.existingRuleId, {
+          currency: currencyRulePrompt.currency,
+        });
+      } else {
+        await currencyRulesApi.create({
+          vendorPattern: currencyRulePrompt.vendorName,
+          currency: currencyRulePrompt.currency,
+          matchType: 'exact',
+          receiptId: currencyRulePrompt.receiptId,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to save currency rule:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save currency rule');
+    } finally {
+      setIsCreatingCurrencyRule(false);
+      setCurrencyRulePrompt(null);
+    }
   };
 
   const inputBaseStyle: React.CSSProperties = {
@@ -966,10 +1061,10 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
               </h3>
               
               <InputGroup label="Currency">
-                 <select 
+                 <select
                     name="currency"
                     value={formData.currency || 'CAD'}
-                    onChange={handleChange}
+                    onChange={handleCurrencyChange}
                     style={inputBaseStyle}
                  >
                     <option value="CAD">CAD — Canadian Dollar</option>
@@ -978,9 +1073,125 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                  </select>
               </InputGroup>
 
-              <InputGroup label="Total Amount">
-                 <div style={{ position: 'relative' }}>
-                    <input 
+              {formData.foreign_currency && formData.foreign_currency !== 'CAD' ? (
+                <>
+                  <InputGroup label={`${formData.foreign_currency} Amount`}>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.foreign_amount || ''}
+                        readOnly
+                        disabled
+                        style={{
+                          ...inputBaseStyle,
+                          paddingLeft: '36px',
+                          opacity: 0.6,
+                          cursor: 'not-allowed',
+                        }}
+                      />
+                      <span style={{
+                        position: 'absolute',
+                        left: '12px',
+                        top: '8px',
+                        color: 'var(--text-tertiary)',
+                        fontSize: 'var(--font-size-body)',
+                      }}>$</span>
+                    </div>
+                  </InputGroup>
+
+                  <InputGroup label="CAD Bank Amount" required>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="total"
+                        value={formData.total || ''}
+                        onChange={handleChange}
+                        placeholder="Enter amount from bank statement"
+                        style={{
+                          ...inputBaseStyle,
+                          paddingLeft: '36px',
+                          fontWeight: 'var(--font-weight-bold)',
+                          borderColor: !formData.total ? 'var(--status-error-text)' : undefined,
+                        }}
+                      />
+                      <span style={{
+                        position: 'absolute',
+                        left: '12px',
+                        top: '8px',
+                        color: 'var(--text-tertiary)',
+                        fontSize: 'var(--font-size-body)',
+                      }}>$</span>
+                    </div>
+                    {!formData.total && (
+                      <p style={{
+                        color: 'var(--status-error-text)',
+                        fontSize: 'var(--font-size-small)',
+                        marginTop: '4px',
+                      }}>
+                        Enter the CAD amount from your bank statement to publish
+                      </p>
+                    )}
+                  </InputGroup>
+
+                  {currencyRulePrompt && (
+                    <div style={{
+                      padding: '12px 16px',
+                      backgroundColor: 'var(--background-elevated)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-default)',
+                      marginBottom: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      flexWrap: 'wrap',
+                    }}>
+                      <Zap size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                      <span style={{ fontSize: 'var(--font-size-small)', flex: 1 }}>
+                        {currencyRulePrompt.mode === 'create'
+                          ? <>Always mark <strong>{currencyRulePrompt.vendorName}</strong> as {currencyRulePrompt.currency}?</>
+                          : <>Update currency rule for <strong>{currencyRulePrompt.vendorName}</strong> to {currencyRulePrompt.currency}?</>
+                        }
+                      </span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={handleCreateCurrencyRule}
+                          disabled={isCreatingCurrencyRule}
+                          style={{
+                            padding: '4px 12px',
+                            backgroundColor: 'var(--primary)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: 'var(--radius-md)',
+                            fontSize: 'var(--font-size-small)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {isCreatingCurrencyRule ? 'Saving...' : 'Yes'}
+                        </button>
+                        <button
+                          onClick={() => setCurrencyRulePrompt(null)}
+                          style={{
+                            padding: '4px 12px',
+                            backgroundColor: 'transparent',
+                            color: 'var(--text-secondary)',
+                            border: '1px solid var(--border-default)',
+                            borderRadius: 'var(--radius-md)',
+                            fontSize: 'var(--font-size-small)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          No
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <InputGroup label="Total Amount">
+                  <div style={{ position: 'relative' }}>
+                    <input
                         type="number"
                         step="0.01"
                         name="total"
@@ -999,8 +1210,9 @@ const ReceiptReview: React.FC<ReceiptReviewProps> = ({ receipt, onUpdate, onBack
                       color: 'var(--text-tertiary)',
                       fontSize: 'var(--font-size-body)',
                     }}>$</span>
-                 </div>
-              </InputGroup>
+                  </div>
+                </InputGroup>
+              )}
 
               <div style={{
                 backgroundColor: 'var(--background)',

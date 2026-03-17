@@ -368,10 +368,24 @@ export const publishReceipt = async (req: AuthenticatedRequest, res: Response) =
     const receipt = receipts[0];
 
     // Validate receipt has required data
+    if (receipt.foreign_currency && !receipt.total) {
+      return res.status(400).json({
+        error: `Receipt is in ${receipt.foreign_currency}. Please enter the CAD bank amount before publishing.`
+      });
+    }
     if (!receipt.vendor_name || !receipt.transaction_date || !receipt.total) {
       return res.status(400).json({
         error: 'Receipt is missing required data (vendor, date, or total)'
       });
+    }
+
+    // Enrich description with foreign currency reference for bookkeeper
+    let publishDescription = receipt.description || '';
+    if (receipt.foreign_currency && receipt.foreign_amount) {
+      const foreignRef = `(${receipt.foreign_currency} $${parseFloat(receipt.foreign_amount).toFixed(2)})`;
+      publishDescription = publishDescription
+        ? `${publishDescription} ${foreignRef}`
+        : foreignRef;
     }
 
     // Publish to QuickBooks
@@ -384,7 +398,7 @@ export const publishReceipt = async (req: AuthenticatedRequest, res: Response) =
       paymentAccountType: data.paymentAccountType,
       isPaid: receipt.is_paid || false,
       publishTarget: receipt.publish_target || 'Expense',
-      description: receipt.description,
+      description: publishDescription,
       imageUrl: receipt.image_url,
       paidBy: receipt.paid_by,
     }, req.organizationId);

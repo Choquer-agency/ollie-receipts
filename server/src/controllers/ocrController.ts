@@ -6,6 +6,7 @@ import { downloadFromR2, deleteFromR2 } from '../utils/r2Utils.js';
 import { parseReceipt } from '../services/geminiService.js';
 import { checkForDuplicate } from './receiptController.js';
 import { matchRule, incrementRuleApplied } from '../services/categoryRulesService.js';
+import { matchRule as matchCurrencyRule, incrementRuleApplied as incrementCurrencyRuleApplied } from '../services/currencyRulesService.js';
 
 export const processOcr = async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
@@ -296,19 +297,39 @@ export async function processSingleReceiptOcr(
       }
     }
 
+    // Auto-detect foreign currency vendor
+    let foreignAmount: number | null = null;
+    let foreignCurrency: string | null = null;
+    let autoCurrencyRuleId: string | null = null;
+
+    if (parsedData.vendor_name) {
+      try {
+        const currencyRule = await matchCurrencyRule(userId, parsedData.vendor_name);
+        if (currencyRule) {
+          foreignAmount = parsedData.total;
+          foreignCurrency = currencyRule.currency;
+          autoCurrencyRuleId = currencyRule.id;
+          await incrementCurrencyRuleApplied(currencyRule.id);
+        }
+      } catch (err) {
+        // Non-critical, continue without currency detection
+      }
+    }
+
     // Allow null date — OCR sometimes can't extract a date
     const txnDate = parsedData.transaction_date && parsedData.transaction_date.trim() !== ''
       ? parsedData.transaction_date
       : null;
 
     // Update receipt with OCR data — reset retry count on success
+    // If foreign currency matched, total is NULL to force manual CAD entry
     await sql`
       UPDATE receipts SET
         vendor_name = ${parsedData.vendor_name},
         transaction_date = ${txnDate},
-        total = ${parsedData.total},
+        total = ${foreignCurrency ? null : parsedData.total},
         tax = ${parsedData.tax || 0},
-        currency = ${parsedData.currency || 'CAD'},
+        currency = ${foreignCurrency || parsedData.currency || 'CAD'},
         suggested_category = ${parsedData.suggested_category},
         description = ${parsedData.description || parsedData.vendor_name},
         status = 'ocr_complete',
@@ -317,11 +338,14 @@ export async function processSingleReceiptOcr(
         qb_account_id = COALESCE(${autoQbAccountId}, qb_account_id),
         auto_categorized = ${autoRuleId ? true : false},
         auto_categorized_rule_id = ${autoRuleId},
+        foreign_amount = ${foreignAmount},
+        foreign_currency = ${foreignCurrency},
+        auto_currency_rule_id = ${autoCurrencyRuleId},
         updated_at = NOW()
       WHERE id = ${receipt.id}
     `;
 
-    trace?.update({ output: { parsedData, autoCategorized: !!autoRuleId } });
+    trace?.update({ output: { parsedData, autoCategorized: !!autoRuleId, foreignCurrency: !!foreignCurrency } });
   } catch (error: any) {
     const errorMsg = error?.message || 'Unknown error';
     const errorDetail = error?.status || error?.statusCode || error?.response?.status || '';

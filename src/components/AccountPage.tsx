@@ -1,27 +1,32 @@
 import React, { useMemo, useState } from 'react';
-import { RefreshCw, FolderOpen, AlertCircle, Zap, Trash2, ArrowRight, BarChart3 } from 'lucide-react';
-import { CachedCategory, CategoryRule } from '../types';
-import { categoryRulesApi } from '../services/apiService';
+import { RefreshCw, FolderOpen, AlertCircle, Zap, Trash2, ArrowRight, BarChart3, DollarSign } from 'lucide-react';
+import { CachedCategory, CategoryRule, CurrencyRule } from '../types';
+import { categoryRulesApi, currencyRulesApi } from '../services/apiService';
 
 interface AccountPageProps {
   categories: CachedCategory[];
   rules: CategoryRule[];
+  currencyRules: CurrencyRule[];
   isQboConnected: boolean;
   onSyncCategories: () => Promise<void>;
   onRulesChanged: () => Promise<void>;
+  onCurrencyRulesChanged: () => Promise<void>;
   isSyncing: boolean;
 }
 
 const AccountPage: React.FC<AccountPageProps> = ({
   categories,
   rules,
+  currencyRules,
   isQboConnected,
   onSyncCategories,
   onRulesChanged,
+  onCurrencyRulesChanged,
   isSyncing,
 }) => {
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null);
+  const [deletingCurrencyRuleId, setDeletingCurrencyRuleId] = useState<string | null>(null);
 
   const grouped = useMemo(() => {
     const groups: Record<string, CachedCategory[]> = {};
@@ -102,6 +107,27 @@ const AccountPage: React.FC<AccountPageProps> = ({
       await onRulesChanged();
     } catch (error) {
       console.error('Failed to toggle rule:', error);
+    }
+  };
+
+  const handleDeleteCurrencyRule = async (ruleId: string) => {
+    setDeletingCurrencyRuleId(ruleId);
+    try {
+      await currencyRulesApi.delete(ruleId);
+      await onCurrencyRulesChanged();
+    } catch (error) {
+      console.error('Failed to delete currency rule:', error);
+    } finally {
+      setDeletingCurrencyRuleId(null);
+    }
+  };
+
+  const handleToggleCurrencyRule = async (ruleId: string, currentActive: boolean) => {
+    try {
+      await currencyRulesApi.update(ruleId, { isActive: !currentActive });
+      await onCurrencyRulesChanged();
+    } catch (error) {
+      console.error('Failed to toggle currency rule:', error);
     }
   };
 
@@ -654,6 +680,139 @@ const AccountPage: React.FC<AccountPageProps> = ({
                     </div>
                   );
                 })}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Currency Rules Section */}
+      <div style={{
+        backgroundColor: 'var(--background-elevated)',
+        borderRadius: 'var(--radius-xl)',
+        border: '1px solid var(--border-default)',
+        boxShadow: 'var(--shadow-raised)',
+        padding: 'var(--card-padding-mobile)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <DollarSign size={20} style={{ color: 'var(--primary)' }} />
+            <h2 style={{
+              fontSize: '1.35rem',
+              fontWeight: 'var(--font-weight-bold)',
+              color: 'var(--text-primary)',
+              fontFamily: 'var(--font-heading)',
+            }}>
+              Currency Rules
+            </h2>
+          </div>
+          {currencyRules.length > 0 && (
+            <span style={{ fontSize: 'var(--font-size-small)', color: 'var(--text-tertiary)' }}>
+              {currencyRules.filter(r => r.isActive).length} active
+            </span>
+          )}
+        </div>
+
+        <p style={{
+          fontSize: 'var(--font-size-small)',
+          color: 'var(--text-secondary)',
+          marginBottom: '16px',
+        }}>
+          Vendors flagged as foreign currency will require a CAD bank amount before publishing.
+        </p>
+
+        {currencyRules.length === 0 ? (
+          <p style={{
+            fontSize: 'var(--font-size-small)',
+            color: 'var(--text-tertiary)',
+            textAlign: 'center',
+            padding: '24px',
+          }}>
+            No currency rules yet. When you change a receipt's currency to USD, you'll be prompted to create a rule.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {currencyRules.map(rule => (
+              <div
+                key={rule.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px 16px',
+                  backgroundColor: rule.isActive ? 'var(--background)' : 'var(--background-elevated)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--border-default)',
+                  opacity: rule.isActive ? 1 : 0.6,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                  <span style={{
+                    fontSize: 'var(--font-size-small)',
+                    fontWeight: 'var(--font-weight-semibold)',
+                    color: 'var(--text-primary)',
+                  }}>
+                    {rule.vendorPattern}
+                  </span>
+                  <ArrowRight size={14} style={{ color: 'var(--text-tertiary)' }} />
+                  <span style={{
+                    fontSize: 'var(--font-size-small)',
+                    color: 'var(--primary)',
+                    fontWeight: 'var(--font-weight-semibold)',
+                  }}>
+                    {rule.currency}
+                  </span>
+                  {rule.matchType === 'contains' && (
+                    <span style={{
+                      fontSize: 'var(--font-size-tiny)',
+                      color: 'var(--text-tertiary)',
+                      backgroundColor: 'var(--background-elevated)',
+                      padding: '2px 6px',
+                      borderRadius: 'var(--radius-md)',
+                    }}>
+                      contains
+                    </span>
+                  )}
+                  {rule.timesApplied > 0 && (
+                    <span style={{
+                      fontSize: 'var(--font-size-tiny)',
+                      color: 'var(--text-tertiary)',
+                    }}>
+                      {rule.timesApplied}x applied
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    onClick={() => handleToggleCurrencyRule(rule.id, rule.isActive)}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: 'var(--font-size-tiny)',
+                      color: rule.isActive ? 'var(--text-secondary)' : 'var(--primary)',
+                      backgroundColor: 'transparent',
+                      border: '1px solid var(--border-default)',
+                      borderRadius: 'var(--radius-md)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {rule.isActive ? 'Pause' : 'Enable'}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteCurrencyRule(rule.id)}
+                    disabled={deletingCurrencyRuleId === rule.id}
+                    style={{
+                      padding: '4px',
+                      color: 'var(--status-error-text)',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      borderRadius: 'var(--radius-md)',
+                      cursor: 'pointer',
+                      opacity: deletingCurrencyRuleId === rule.id ? 0.5 : 1,
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

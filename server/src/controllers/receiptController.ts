@@ -57,6 +57,8 @@ const createReceiptSchema = z.object({
   paymentAccountId: z.string().optional(),
   qbAccountId: z.string().optional(),
   paidBy: z.string().optional(),
+  foreignAmount: z.number().nullable().optional(),
+  foreignCurrency: z.string().nullable().optional(),
 });
 
 const updateReceiptSchema = createReceiptSchema.partial();
@@ -423,7 +425,9 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
         qb_account_id = ${finalQbAccountId},
         paid_by = ${data.paidBy !== undefined ? data.paidBy : current.paid_by},
         auto_categorized = ${isAutoCategorized || current.auto_categorized || false},
-        auto_categorized_rule_id = ${autoRuleId || current.auto_categorized_rule_id || null}
+        auto_categorized_rule_id = ${autoRuleId || current.auto_categorized_rule_id || null},
+        foreign_amount = ${data.foreignAmount !== undefined ? data.foreignAmount : current.foreign_amount},
+        foreign_currency = ${data.foreignCurrency !== undefined ? data.foreignCurrency : current.foreign_currency}
       WHERE id = ${id}
       RETURNING *
     `;
@@ -446,6 +450,8 @@ export const updateReceipt = async (req: AuthenticatedRequest, res: Response) =>
       paymentAccountId: 'payment_account_id',
       qbAccountId: 'qb_account_id',
       paidBy: 'paid_by',
+      foreignAmount: 'foreign_amount',
+      foreignCurrency: 'foreign_currency',
       status: 'status',
       imageUrl: 'image_url',
       originalFilename: 'original_filename',
