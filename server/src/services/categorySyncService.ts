@@ -32,9 +32,13 @@ export async function syncCategories(userId: string): Promise<{
   for (const account of qbAccounts) {
     qbAccountIds.push(account.Id);
 
+    const displayName = account.AcctNum
+      ? `${account.AcctNum} - ${account.FullyQualifiedName || account.Name}`
+      : account.FullyQualifiedName || account.Name;
+
     const result = await sql`
       INSERT INTO qb_categories (user_id, qb_account_id, name, account_type, account_sub_type, active, last_synced_at)
-      VALUES (${userId}, ${account.Id}, ${account.Name}, ${account.AccountType}, ${account.AccountSubType || null}, true, CURRENT_TIMESTAMP)
+      VALUES (${userId}, ${account.Id}, ${displayName}, ${account.AccountType}, ${account.AccountSubType || null}, true, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, qb_account_id)
       DO UPDATE SET
         name = EXCLUDED.name,

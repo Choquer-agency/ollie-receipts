@@ -7,6 +7,8 @@ import { getLangfuse } from './langfuseService.js';
 export interface QBAccount {
   Id: string;
   Name: string;
+  AcctNum?: string;
+  FullyQualifiedName?: string;
   AccountType: string;
   AccountSubType: string;
   Active: boolean;

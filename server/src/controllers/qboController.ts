@@ -291,7 +291,9 @@ export const getExpenseAccounts = async (req: AuthenticatedRequest, res: Respons
     // Transform to match frontend format
     const formattedAccounts = accounts.map(account => ({
       id: account.Id,
-      name: `${account.Id} - ${account.Name}`,
+      name: account.AcctNum
+        ? `${account.AcctNum} - ${account.FullyQualifiedName || account.Name}`
+        : account.FullyQualifiedName || account.Name,
       type: account.AccountType,
     }));
     
@@ -315,7 +317,9 @@ export const getPaymentAccounts = async (req: AuthenticatedRequest, res: Respons
     // Transform to match frontend format
     const formattedAccounts = accounts.map(account => ({
       id: account.Id,
-      name: account.Name,
+      name: account.AcctNum
+        ? `${account.AcctNum} - ${account.FullyQualifiedName || account.Name}`
+        : account.FullyQualifiedName || account.Name,
       type: account.AccountType === 'Bank' ? 'Bank' : 'Credit Card',
     }));
     
